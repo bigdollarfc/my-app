@@ -257,6 +257,40 @@ function Toast({ message }: { message: string }) {
   return <div className={`toast${message ? ' show' : ''}`} role="status">{message}</div>
 }
 
+function AuthModal({ open, mode, busy, onClose, onSubmit, onSwitch }: {
+  open: boolean
+  mode: 'signin' | 'signup'
+  busy: boolean
+  onClose: () => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSwitch: () => void
+}) {
+  return (
+    <Modal open={open} onClose={onClose} labelledBy="auth-title" className="auth-card">
+      <ModalHead
+        title={mode === 'signin' ? 'Welcome back' : 'Create your account'}
+        subtitle={mode === 'signin' ? 'Sign in to keep posting.' : 'Join and start sharing moments.'}
+        onClose={onClose}
+      />
+      <form className="profile-edit-form" onSubmit={onSubmit}>
+        {mode === 'signup' && (
+          <label className="field">Display name<input name="displayName" maxLength={60} required placeholder="Maya Chen" /></label>
+        )}
+        <label className="field">Email<input name="email" type="email" required placeholder="you@example.com" autoComplete="email" /></label>
+        <label className="field">Password<input name="password" type="password" required minLength={6} placeholder="At least 6 characters" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} /></label>
+        <footer className="button-row">
+          <button className="secondary-button" type="button" onClick={onSwitch}>
+            {mode === 'signin' ? 'Need an account?' : 'Have an account?'}
+          </button>
+          <button className="primary-button" type="submit" disabled={busy}>
+            {busy ? 'Working…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+          </button>
+        </footer>
+      </form>
+    </Modal>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /* Video stage (feed card)                                             */
 /* ------------------------------------------------------------------ */
@@ -637,6 +671,7 @@ export default function App() {
   function toggleRecord() {
     if (isRecording) stopRecording()
     else if (streamRef.current) startRecording()
+    else if (!session) { setScreen('create'); openAuth('signin') }
     else void startCamera()
   }
 
@@ -706,6 +741,49 @@ export default function App() {
     }
   }
 
+  /* --- auth modal --- */
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
+  const [authBusy, setAuthBusy] = useState(false)
+
+  function openAuth(mode: 'signin' | 'signup') {
+    setAuthMode(mode)
+    setAuthOpen(true)
+  }
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase) { notify('Sign in needs the app owner to configure Supabase.'); return }
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const email = String(data.get('email'))
+    const password = String(data.get('password'))
+    const displayName = String(data.get('displayName') ?? '')
+    setAuthBusy(true)
+    try {
+      if (authMode === 'signup') {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { display_name: displayName || email.split('@')[0] } },
+        })
+        if (error) throw error
+        setAuthOpen(false)
+        notify('Account created. You are signed in.')
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) throw error
+        setAuthOpen(false)
+        notify('Signed in.')
+      }
+      form.reset()
+    } catch (error) {
+      notify(toErrorMessage(error, 'Could not sign you in. Try again.'))
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
   /* --- derived --- */
   const myClips = useMemo(() => (session ? clips.filter((clip) => clip.ownerId === session.user.id) : []), [clips, session])
   const profileGridItems = session && myClips.length > 0
@@ -745,9 +823,15 @@ export default function App() {
               <span className="nav-icon">{item.icon}</span>{item.label}
             </button>
           ))}
-      </nav>
-      <div className="sidebar-spacer" />
-      <div className="creator-mini">
+        </nav>
+        <div className="sidebar-spacer" />
+        {!session && (
+          <div className="auth-buttons">
+            <button className="primary-button" onClick={() => openAuth('signin')}>Sign in</button>
+            <button className="secondary-button" onClick={() => openAuth('signup')}>Create account</button>
+          </div>
+        )}
+        <div className="creator-mini">
         <Avatar initials={accountInitials} src={profile?.avatar_url} />
         <span><strong>{accountName}</strong><small>{accountHandle}</small></span>
         <button className="sidebar-more" onClick={() => navigate('settings')} aria-label="Account settings">•••</button>
@@ -765,6 +849,7 @@ export default function App() {
       <button className="top-icon" onClick={() => navigate('studio')} aria-label="Open Studio">▥</button>
       <button className="top-icon" onClick={() => navigate('settings')} aria-label="Open settings">⚙</button>
       <button className="top-create" onClick={startCamera}>＋ Create</button>
+      {!session && <button className="primary-button top-auth" onClick={() => openAuth('signin')}>Sign in</button>}
     </header>
 
     <main className="main-content">
@@ -1178,6 +1263,9 @@ export default function App() {
       <button className="primary-button" onClick={() => { setSoundsOpen(false); notify(`${selectedSound.title} selected for your next video.`) }}>Use this sound</button>
     </footer>
   </Modal>
+
+  {/* ---------- Auth modal ---------- */ }
+  <AuthModal open={authOpen} mode={authMode} busy={authBusy} onClose={() => setAuthOpen(false)} onSubmit={submitAuth} onSwitch={() => setAuthMode((mode) => (mode === 'signin' ? 'signup' : 'signin'))} />
 
   {/* ---------- Mobile nav ---------- */ }
       <nav className="mobile-nav" aria-label="Mobile navigation">
