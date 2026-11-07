@@ -6,7 +6,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase'
 /* Types & data                                                        */
 /* ------------------------------------------------------------------ */
 
-type ScreenId = 'home' | 'discover' | 'create' | 'post' | 'message' | 'profile' | 'settings' | 'studio'
+type ScreenId = 'home' | 'discover' | 'create' | 'post' | 'message' | 'profile' | 'settings' | 'studio' | 'owner'
 
 type Profile = {
   username: string
@@ -14,6 +14,32 @@ type Profile = {
   bio: string
   avatar_url: string | null
   banner_url: string | null
+  is_admin?: boolean
+  verified?: boolean
+  banned?: boolean
+}
+
+type AdminUser = {
+  id: string
+  email: string
+  created_at: string
+  last_sign_in_at: string | null
+  username: string
+  display_name: string
+  is_admin: boolean
+  verified: boolean
+  banned: boolean
+  avatar_url: string | null
+}
+
+type AdminVideo = {
+  id: string
+  caption: string | null
+  status: string | null
+  created_at: string | null
+  video_url: string | null
+  owner_id: string | null
+  ownerName: string
 }
 
 type Clip = {
@@ -347,6 +373,151 @@ function VideoStage({ clip, liked, onLike, onComments, onShare, onSave, onSound 
 }
 
 /* ------------------------------------------------------------------ */
+/* Owner panel (hidden from regular users)                             */
+/* ------------------------------------------------------------------ */
+
+function OwnerPanel({ notify }: { notify: (message: string) => void }) {
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [videos, setVideos] = useState<AdminVideo[]>([])
+  const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState('')
+  const [tab, setTab] = useState<'users' | 'videos'>('users')
+
+  async function loadData() {
+    if (!supabase) return
+    setLoading(true)
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, is_admin, verified, banned, avatar_url, email, created_at, last_sign_in_at')
+        .order('created_at', { ascending: false })
+      if (userError) throw userError
+      setUsers((userData ?? []) as unknown as AdminUser[])
+
+      const { data: videoData, error: videoError } = await supabase
+        .from('videos')
+        .select('id, caption, status, created_at, video_url, owner_id, profiles:owner_id(display_name)')
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (videoError) throw videoError
+      const rows = (videoData ?? []) as unknown as Array<Record<string, unknown> & { profiles?: { display_name?: string } | { display_name?: string }[] }>
+      setVideos(rows.map((row) => ({
+        ...(row as unknown as AdminVideo),
+        ownerName: Array.isArray(row.profiles) ? row.profiles[0]?.display_name ?? '' : row.profiles?.display_name ?? '',
+      })))
+    } catch (error) {
+      notify(toErrorMessage(error, 'Could not load panel data.'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { void loadData() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [])
+
+  async function patchUser(id: string, patch: Partial<Pick<AdminUser, 'is_admin' | 'verified' | 'banned'>>, label: string) {
+    if (!supabase) return
+    setBusyId(id)
+    try {
+      const { error } = await supabase.from('profiles').update(patch).eq('id', id)
+      if (error) throw error
+      setUsers((current) => current.map((user) => (user.id === id ? { ...user, ...patch } : user)))
+      notify(label)
+    } catch (error) {
+      notify(toErrorMessage(error, 'Update failed.'))
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  async function removeVideo(video: AdminVideo) {
+    if (!supabase) return
+    if (!window.confirm('Delete this video permanently?')) return
+    setBusyId(video.id)
+    try {
+      const { error } = await supabase.from('videos').delete().eq('id', video.id)
+      if (error) throw error
+      if (video.video_url?.includes('/arc-videos/')) {
+        const path = video.video_url.split('/arc-videos/')[1]?.split('?')[0]
+        if (path) await supabase.storage.from('arc-videos').remove([decodeURIComponent(path)])
+      }
+      setVideos((current) => current.filter((item) => item.id !== video.id))
+      notify('Video removed.')
+    } catch (error) {
+      notify(toErrorMessage(error, 'Could not delete the video.'))
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  const filtered = users.filter((user) => `${user.display_name} ${user.username} ${user.email}`.toLowerCase().includes(query.trim().toLowerCase()))
+
+  return (
+    <section className="screen active" data-view="owner" aria-label="Owner panel">
+      <PageHead
+        title="Owner panel"
+        subtitle="Manage accounts, verification, and content."
+        tools={<>
+          <button className="secondary-button" onClick={() => void loadData()}>{loading ? 'Loading…' : '↻ Refresh'}</button>
+          <span className="owner-count">{users.length} accounts · {videos.length} videos</span>
+        </>}
+      />
+      <div className="owner-tabs">
+        <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Accounts</button>
+        <button className={tab === 'videos' ? 'active' : ''} onClick={() => setTab('videos')}>Videos</button>
+      </div>
+
+      {tab === 'users' && (
+        <>
+          <input className="owner-search" placeholder="Search accounts by name, username, or email…" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <div className="owner-table-wrap">
+            <table className="owner-table">
+              <thead><tr><th>Account</th><th>Email</th><th>Verified</th><th>Admin</th><th>Banned</th><th></th></tr></thead>
+              <tbody>
+                {filtered.map((user) => (
+                  <tr key={user.id} style={user.banned ? { opacity: 0.5 } : undefined}>
+                    <td>
+                      <span className="owner-user-cell">
+                        <Avatar initials={initialsOf(user.display_name || user.username)} src={user.avatar_url} size={30} />
+                        <span><b>{user.display_name || user.username || '—'}{user.verified && <span className="badge-blue" title="Verified">✔</span>}</b><small>@{user.username || 'unset'}</small></span>
+                      </span>
+                    </td>
+                    <td className="owner-email">{user.email || '—'}</td>
+                    <td><button className={`pill${user.verified ? ' on-blue' : ''}`} disabled={busyId === user.id} onClick={() => void patchUser(user.id, { verified: !user.verified }, user.verified ? 'Verification removed.' : 'Blue badge granted.')}>{user.verified ? '✔ Verified' : 'Verify'}</button></td>
+                    <td><button className={`pill${user.is_admin ? ' on' : ''}`} disabled={busyId === user.id} onClick={() => void patchUser(user.id, { is_admin: !user.is_admin }, user.is_admin ? 'Admin access removed.' : 'Promoted to admin.')}>{user.is_admin ? 'Owner' : 'Make admin'}</button></td>
+                    <td><button className={`pill${user.banned ? ' on-red' : ''}`} disabled={busyId === user.id} onClick={() => void patchUser(user.id, { banned: !user.banned }, user.banned ? 'Account unbanned.' : 'Account banned.')}>{user.banned ? 'Banned' : 'Ban'}</button></td>
+                    <td className="owner-joined">{user.created_at ? new Date(user.created_at).toLocaleDateString() : ''}</td>
+                  </tr>
+                ))}
+                {!loading && filtered.length === 0 && <tr><td colSpan={6} className="owner-empty">No accounts match.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {tab === 'videos' && (
+        <div className="owner-videos">
+          {videos.map((video) => (
+            <div className="owner-video-row" key={video.id}>
+              {video.video_url
+                ? <video src={video.video_url} muted playsInline />
+                : <span className="owner-video-blank">No file</span>}
+              <span className="owner-video-meta">
+                <b>{video.ownerName || 'Unknown'} · {video.status ?? 'published'}</b>
+                <small>{video.caption || '(no caption)'} — {video.created_at ? new Date(video.created_at).toLocaleString() : ''}</small>
+              </span>
+              <button className="pill on-red" disabled={busyId === video.id} onClick={() => void removeVideo(video)}>{busyId === video.id ? 'Removing…' : 'Delete'}</button>
+            </div>
+          ))}
+          {!loading && videos.length === 0 && <p className="panel-note">No videos posted yet.</p>}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* App                                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -390,11 +561,13 @@ export default function App() {
     return () => { active = false }
   }, [session])
 
+  /* --- auth modal --- */
   /* --- account identity --- */
   const accountEmail = session?.user.email ?? ''
   const accountName = profile?.display_name || String(session?.user.user_metadata?.display_name ?? '') || accountEmail.split('@')[0] || 'Maya Chen'
   const accountHandle = `@${profile?.username || accountEmail.split('@')[0] || 'mayamakes'}`
   const accountInitials = initialsOf(accountName) || 'MC'
+  const isAdmin = Boolean(profile?.is_admin)
 
   /* --- feed --- */
   const [clips, setClips] = useState<Clip[]>(starterClips)
@@ -833,8 +1006,9 @@ export default function App() {
         )}
         <div className="creator-mini">
         <Avatar initials={accountInitials} src={profile?.avatar_url} />
-        <span><strong>{accountName}</strong><small>{accountHandle}</small></span>
-        <button className="sidebar-more" onClick={() => navigate('settings')} aria-label="Account settings">•••</button>
+        <span><strong>{accountName}{profile?.verified && <span className="badge-blue" title="Verified">✔</span>}</strong><small>{accountHandle}</small></span>
+        {isAdmin && <button className="sidebar-more" onClick={() => navigate('owner')} aria-label="Owner panel" title="Owner panel">⬛</button>}
+        {!isAdmin && <button className="sidebar-more" onClick={() => navigate('settings')} aria-label="Account settings">•••</button>}
       </div>
     </aside>
 
@@ -1059,7 +1233,7 @@ export default function App() {
         </div>
         <div className="profile-summary">
           <span className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt={`${accountName} profile`} /> : accountInitials}</span>
-          <div className="profile-details"><h2>{accountName}</h2><p>{accountHandle} · Portland, OR</p></div>
+          <div className="profile-details"><h2>{accountName}{profile?.verified && <span className="badge-blue" title="Verified">✔</span>}</h2><p>{accountHandle} · Portland, OR</p></div>
           <button className="secondary-button" onClick={() => navigate('studio')}>Open Studio</button>
         </div>
         <div className="profile-stats">
@@ -1142,6 +1316,9 @@ export default function App() {
           </section>
         </div>
       </section>
+      {/* ================= OWNER PANEL (admins only) ================= */}
+      {isAdmin && screen === 'owner' && <OwnerPanel notify={notify} />}
+
     </main>
   </div>
 
