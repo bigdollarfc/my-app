@@ -1,466 +1,632 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import {
-  ArrowDownToLine,
-  ArrowLeft,
-  Check,
-  CircleHelp,
-  Compass,
-  Home,
-  ImagePlus,
-  LogOut,
-  MessageCircle,
-  Mic2,
-  MoreHorizontal,
-  Music2,
-  Plus,
-  Search,
-  Send,
-  Settings2,
-  Sparkles,
-  UserRound,
-  Video,
-  X,
-} from 'lucide-react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
-type Screen = 'feed' | 'profile' | 'create' | 'discover' | 'inbox'
-type Profile = { username: string; display_name: string; bio: string; avatar_url: string | null; banner_url: string | null }
+/* ------------------------------------------------------------------ */
+/* Types & data                                                        */
+/* ------------------------------------------------------------------ */
+
+type ScreenId = 'home' | 'discover' | 'create' | 'post' | 'message' | 'profile' | 'settings' | 'studio'
+
+type Profile = {
+  username: string
+  display_name: string
+  bio: string
+  avatar_url: string | null
+  banner_url: string | null
+}
+
 type Clip = {
+  id: string
   creator: string
   handle: string
   initials: string
   caption: string
+  tags: string
   audio: string
   likes: number
   comments: number
   image: string
   imageAlt: string
-  color: string
   videoSrc?: string
   ownerId?: string
 }
 
+type Comment = { id: string; author: string; initials: string; time: string; text: string; likes: number }
+type Conversation = { id: string; name: string; initials: string; preview: string; time: string }
+type Bubble = { id: number; mine: boolean; text: string }
+type Story = { id: string; name: string; initials: string; image: string; caption: string; time: string }
+type Sound = { id: string; title: string; artist: string; usage: string }
+
+const NAV_MAIN: { id: ScreenId; label: string; icon: string; create?: boolean }[] = [
+  { id: 'home', label: 'Home', icon: '⌂' },
+  { id: 'discover', label: 'Discover', icon: '⌕' },
+  { id: 'create', label: 'Create video', icon: '＋', create: true },
+  { id: 'message', label: 'Messages', icon: '◌' },
+]
+
+const NAV_CREATOR: { id: ScreenId; label: string; icon: string }[] = [
+  { id: 'studio', label: 'Studio', icon: '▥' },
+  { id: 'profile', label: 'Profile', icon: '◉' },
+  { id: 'settings', label: 'Settings', icon: '⚙' },
+]
+
+const NAV_MOBILE: { id: ScreenId; label: string; icon: string; create?: boolean }[] = [
+  { id: 'home', label: 'Home', icon: '⌂' },
+  { id: 'discover', label: 'Discover', icon: '⌕' },
+  { id: 'create', label: 'Create', icon: '＋', create: true },
+  { id: 'message', label: 'Inbox', icon: '◌' },
+  { id: 'profile', label: 'Profile', icon: '◉' },
+]
+
 const starterClips: Clip[] = [
   {
-    creator: 'Maya Cooks',
-    handle: '@maya.cooks',
-    initials: 'MC',
-    caption: 'Crispy chili oil noodles in 10 minutes. Full recipe in the comments.',
-    audio: 'Maya Cooks · original audio',
-    likes: 12400,
-    comments: 342,
-    image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=1000&q=85',
-    imageAlt: 'A bowl of spicy noodles topped with herbs and chili oil',
-    color: 'blue',
-  },
-  {
-    creator: 'Nico Flores',
-    handle: '@nicoflores',
-    initials: 'NF',
-    caption: 'Golden hour found us before we found the trail.',
-    audio: 'soft hours · Nico Flores',
-    likes: 8930,
-    comments: 128,
-    image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1000&q=85',
+    id: 'mountain', creator: 'Jonah Lee', handle: '@jonah.lee', initials: 'JL',
+    caption: 'Somewhere between the trail and home. Took the long way back, and it was worth every minute.',
+    tags: '#outside #slowdays #weekend', audio: 'original sound · Jonah Lee',
+    likes: 128700, comments: 6432,
+    image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1100&q=85',
     imageAlt: 'A mountain lake at golden hour',
-    color: 'coral',
   },
   {
-    creator: 'Ivy & Co.',
-    handle: '@ivyandco',
-    initials: 'IC',
-    caption: 'A tiny studio refresh with things we already had around.',
-    audio: 'Sunday in the studio · Ivy & Co.',
-    likes: 21600,
-    comments: 506,
-    image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=1000&q=85',
-    imageAlt: 'A bright, plant-filled creative studio',
-    color: 'green',
+    id: 'food', creator: 'Nia Cooks', handle: '@nia.cooks', initials: 'NC',
+    caption: 'A little lunch break with whatever was in the fridge. Easy, bright, and really good.',
+    tags: '#homecooking #lunchideas', audio: 'Sunday kitchen · Nia Cooks',
+    likes: 42600, comments: 1208,
+    image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=1100&q=80',
+    imageAlt: 'A colorful lunch prepared at home',
+  },
+  {
+    id: 'coast', creator: 'Ari Rivera', handle: '@ari.outside', initials: 'AR',
+    caption: 'Stayed until the light turned silver. Leaving this here for your next deep breath.',
+    tags: '#coastline #slowdown', audio: 'Coastline · Ari Rivera',
+    likes: 18300, comments: 920,
+    image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1100&q=85',
+    imageAlt: 'A quiet blue coastline at sunset',
   },
 ]
 
-const navItems: { screen: Screen; label: string; Icon: typeof Home }[] = [
-  { screen: 'feed', label: 'Home', Icon: Home },
-  { screen: 'discover', label: 'Discover', Icon: Compass },
-  { screen: 'create', label: 'Create', Icon: Plus },
-  { screen: 'inbox', label: 'Inbox', Icon: MessageCircle },
-  { screen: 'profile', label: 'Profile', Icon: UserRound },
+const discoverCards = [
+  { title: 'One-pan, no plans', meta: 'Food · 24.6K new views', image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=700&q=80', alt: 'Colorful lunch on a table' },
+  { title: 'Quiet places club', meta: 'Outdoors · 18.2K videos', image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=700&q=80', alt: 'Mountain lake' },
+  { title: 'Reset your space', meta: 'Design · 9,810 videos', image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=700&q=80', alt: 'A sunny creative studio' },
+  { title: 'Blue hour walks', meta: 'Travel · 7,200 videos', image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=700&q=80', alt: 'Sunlit coastal landscape' },
+  { title: 'Morning light', meta: 'Daily life · 6,420 videos', image: 'https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?auto=format&fit=crop&w=700&q=80', alt: 'Sunrise over green hills' },
+  { title: 'Make it by hand', meta: 'Creative · 5,908 videos', image: 'https://images.unsplash.com/photo-1508615070457-7baeba4003ab?auto=format&fit=crop&w=700&q=80', alt: 'A camera on a desk' },
+  { title: 'Take the scenic route', meta: 'Travel · 4,521 videos', image: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=700&q=80', alt: 'A mountain valley' },
+  { title: 'Little things lately', meta: 'Everyday · 3,940 videos', image: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=700&q=80', alt: 'Flowers in bright sunlight' },
 ]
+
+const trends = [
+  { tag: 'little rituals', count: '12.8K videos', growth: '+18%' },
+  { tag: 'weekend table', count: '8,420 videos', growth: '+12%' },
+  { tag: 'soft landscapes', count: '6,190 videos', growth: '+9%' },
+]
+
+const suggestedCreators = [
+  { name: 'Sofia Kim', initials: 'SK', meta: 'Art & illustration' },
+  { name: 'Ari Rivera', initials: 'AR', meta: 'Outdoors · 18K' },
+]
+
+const starterConversations: Conversation[] = [
+  { id: 'sk', name: 'Sofia Kim', initials: 'SK', preview: 'That color palette is perfect', time: '2m' },
+  { id: 'ar', name: 'Ari Rivera', initials: 'AR', preview: 'Sent you a video', time: '1h' },
+  { id: 'nl', name: 'Nico Lane', initials: 'NL', preview: 'Are you free this weekend?', time: '3h' },
+  { id: 'jw', name: 'Jules Walker', initials: 'JW', preview: 'Liked your post', time: '1d' },
+]
+
+const starterComments: Comment[] = [
+  { id: 'c1', author: 'Sofia Kim', initials: 'SK', time: '2h', text: 'This looks unreal. Adding it to my weekend list.', likes: 248 },
+  { id: 'c2', author: 'Ari Rivera', initials: 'AR', time: '1h', text: 'The quiet spots always end up being the best ones.', likes: 96 },
+  { id: 'c3', author: 'Nico Lane', initials: 'NL', time: '44m', text: 'Where was this trail?', likes: 31 },
+]
+
+const stories: Story[] = [
+  { id: 'you', name: 'Your story', initials: 'MC', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80', caption: 'A little moment from today.', time: 'just now' },
+  { id: 's1', name: 'Jonah', initials: 'JL', image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80', caption: 'Trail treats and thin air.', time: '3 hours ago' },
+  { id: 's2', name: 'Sofia', initials: 'SK', image: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=120&q=80', caption: 'New palette, same chaos.', time: '2 hours ago' },
+  { id: 's3', name: 'Ari', initials: 'AR', image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&q=80', caption: 'Blue hour is undefeated.', time: '5 hours ago' },
+  { id: 's4', name: 'Nia', initials: 'NC', image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=120&q=80', caption: 'Lunch in ten minutes.', time: '1 hour ago' },
+]
+
+const sounds: Sound[] = [
+  { id: 'snd1', title: 'Original sound', artist: 'Jonah Lee', usage: '12.4K videos' },
+  { id: 'snd2', title: 'Blue hour', artist: 'Northbound', usage: '84.2K videos' },
+  { id: 'snd3', title: 'Slow morning', artist: 'Studio Notes', usage: '26.8K videos' },
+  { id: 'snd4', title: 'Coastline (instrumental)', artist: 'Rae Sol', usage: '102K videos' },
+]
+
+const peopleFollowing = [
+  { name: 'Sofia Kim', initials: 'SK', meta: '@sofia.draws · Art & illustration' },
+  { name: 'Ari Rivera', initials: 'AR', meta: '@ari.outside · Outdoors' },
+  { name: 'Nico Lane', initials: 'NL', meta: '@nico.lane · Travel' },
+]
+
+const peopleFollowers = [
+  { name: 'Jonah Lee', initials: 'JL', meta: '@jonah.lee · Outdoors' },
+  { name: 'Jules Walker', initials: 'JW', meta: '@jules.walker · Film' },
+  { name: 'Devon Miles', initials: 'DM', meta: '@devon.miles · Music' },
+]
+
+const settingsOptions = [
+  { key: 'private', title: 'Private account', detail: 'Only approved followers can see your posts.', on: false },
+  { key: 'activity', title: 'Activity status', detail: 'Let people you follow see when you are active.', on: true },
+  { key: 'personalized', title: 'Personalized recommendations', detail: 'Use your interests to tune your For you feed.', on: true },
+  { key: 'notifications', title: 'Video notifications', detail: 'Get updates from creators you follow.', on: true },
+  { key: 'datasaver', title: 'Data saver', detail: 'Use less data when you are not on Wi-Fi.', on: false },
+]
+
+const chartBars = [34, 49, 42, 63, 55, 77, 66, 91, 72, 100, 83, 94]
+
+const topVideos = [
+  { title: 'The long way home', when: 'Posted 2 days ago', views: '24.8K', image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=120&q=80' },
+  { title: 'Lunch in ten minutes', when: 'Posted 5 days ago', views: '12.2K', image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=120&q=80' },
+  { title: 'Reset the studio', when: 'Posted 1 week ago', views: '8,940', image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=120&q=80' },
+]
+
+const profileTiles = [
+  { views: '24.8K', image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=400&q=80', alt: 'Mountain lake' },
+  { views: '12.2K', image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=400&q=80', alt: 'Lunch' },
+  { views: '8,940', image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=400&q=80', alt: 'Studio' },
+  { views: '6,102', image: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=400&q=80', alt: 'Flowers' },
+]
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
 
 function formatCount(count: number) {
-  return count >= 1000 ? `${(count / 1000).toFixed(count >= 10000 ? 1 : 1)}K` : String(count)
+  return count >= 1000 ? `${(count / 1000).toFixed(1)}K` : String(count)
 }
 
-function App() {
-  const [screen, setScreen] = useState<Screen>('feed')
+function initialsOf(name: string) {
+  return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+}
+
+function toErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+/* ------------------------------------------------------------------ */
+/* Small shared components                                             */
+/* ------------------------------------------------------------------ */
+
+function VisualMark() {
+  return (
+    <svg viewBox="0 0 100 100" role="img" aria-label="Visual logo">
+      <defs>
+        <linearGradient id="visualFrame" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#00eaff" /><stop offset=".52" stopColor="#235dff" /><stop offset="1" stopColor="#ff21db" /></linearGradient>
+        <linearGradient id="visualV" x1=".1" y1="0" x2=".9" y2="1"><stop stopColor="#26eaff" /><stop offset=".48" stopColor="#154fff" /><stop offset="1" stopColor="#f31bdf" /></linearGradient>
+      </defs>
+      <rect x="5" y="5" width="90" height="90" rx="23" fill="#030308" stroke="url(#visualFrame)" strokeWidth="3" />
+      <path d="M22 29h15l14 23 14-23h15L57 73H46z" fill="url(#visualV)" />
+      <path d="M17 64c19 15 50 9 67-14 3-4 5-8 7-12-2 17-17 35-37 41-17 5-32 1-41-8" fill="none" stroke="url(#visualFrame)" strokeWidth="5" strokeLinecap="round" />
+      <path d="m57 39 13 8-13 8z" fill="#fff" />
+      <path d="M77 20v7m9-4-4 6m10 1-6 2" fill="none" stroke="#e72cff" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function Avatar({ initials, src, size }: { initials: string; src?: string | null; size?: number }) {
+  const style = size ? { width: size, height: size } : undefined
+  if (src) return <span className="avatar" style={style}><img src={src} alt="" /></span>
+  return <span className="avatar" style={style}>{initials}</span>
+}
+
+function Modal({ open, onClose, labelledBy, className, children }: {
+  open: boolean; onClose: () => void; labelledBy?: string; className?: string; children: ReactNode
+}) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  return (
+    <div className={`modal-layer${open ? ' open' : ''}`} aria-hidden={!open} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <section className={`modal-card${className ? ` ${className}` : ''}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+        {children}
+      </section>
+    </div>
+  )
+}
+
+function ModalHead({ title, subtitle, onClose }: { title: string; subtitle?: string; onClose: () => void }) {
+  return (
+    <header className="modal-head">
+      <div>
+        <h2>{title}</h2>
+        {subtitle && <small>{subtitle}</small>}
+      </div>
+      <button className="modal-close" onClick={onClose} aria-label={`Close ${title.toLowerCase()}`}>×</button>
+    </header>
+  )
+}
+
+function PageHead({ title, subtitle, tools }: { title: string; subtitle: string; tools?: ReactNode }) {
+  return (
+    <div className="page-head">
+      <div><h1>{title}</h1><p>{subtitle}</p></div>
+      {tools && <div className="page-tools">{tools}</div>}
+    </div>
+  )
+}
+
+function Toast({ message }: { message: string }) {
+  return <div className={`toast${message ? ' show' : ''}`} role="status">{message}</div>
+}
+
+/* ------------------------------------------------------------------ */
+/* Video stage (feed card)                                             */
+/* ------------------------------------------------------------------ */
+
+function VideoStage({ clip, liked, onLike, onComments, onShare, onSave, onSound }: {
+  clip: Clip
+  liked: boolean
+  onLike: () => void
+  onComments: () => void
+  onShare: () => void
+  onSave: () => void
+  onSound: () => void
+}) {
+  const [paused, setPaused] = useState(false)
+  return (
+    <article className={`video-stage${paused ? ' paused' : ''}`} data-video-id={clip.id}>
+      {clip.videoSrc
+        ? <video src={clip.videoSrc} muted playsInline loop autoPlay style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }} />
+        : <img src={clip.image} alt={clip.imageAlt} />}
+      <div className="feed-mode-tabs">
+        <button>Following</button>
+        <button className="active">For you</button>
+        <button>Live</button>
+      </div>
+      <div className="video-top">
+        <span className="live-pill"><span>●</span> FEATURED</span>
+        <button className="sound-pill" onClick={onSound}>♫ {clip.audio}</button>
+      </div>
+      <button className="video-controls" aria-label={paused ? 'Play video' : 'Pause video'} onClick={() => setPaused((value) => !value)}>{paused ? '▶' : 'Ⅱ'}</button>
+      <div className="video-actions">
+        <button className={`action-button like-button${liked ? ' liked' : ''}`} aria-label="Like video" onClick={onLike}>
+          <b>{liked ? '♥' : '♡'}</b><small>{formatCount(clip.likes + (liked ? 1 : 0))}</small>
+        </button>
+        <button className="action-button comments-button" aria-label="View comments" onClick={onComments}>
+          <b><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-5.5A7.5 7.5 0 1 1 20 11.5Z" /></svg></b>
+          <small>{formatCount(clip.comments)}</small>
+        </button>
+        <button className="action-button share-button" aria-label="Share video" onClick={onShare}><b>↗</b><small>Share</small></button>
+        <button className="action-button save-button" aria-label="Save video" onClick={onSave}><b>♧</b><small>Save</small></button>
+      </div>
+      <div className="video-bottom">
+        <div className="video-user">
+          <Avatar initials={clip.initials} />
+          <span><strong>{clip.creator}</strong><small>{clip.handle} · 18 min ago</small></span>
+          <button className="follow-button">Follow</button>
+        </div>
+        <p className="caption">{clip.caption}</p>
+        <div className="tags">{clip.tags}</div>
+        <button className="audio-line" onClick={onSound}>♫ &nbsp; {clip.audio}</button>
+      </div>
+      <div className="video-progress"><span /></div>
+    </article>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* App                                                                 */
+/* ------------------------------------------------------------------ */
+
+export default function App() {
+  /* --- navigation & toast --- */
+  const [screen, setScreen] = useState<ScreenId>('home')
+  const [toastMessage, setToastMessage] = useState('')
+  const toastTimer = useRef<number | null>(null)
+
+  function notify(message: string) {
+    setToastMessage(message)
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToastMessage(''), 2200)
+  }
+  useEffect(() => () => { if (toastTimer.current !== null) window.clearTimeout(toastTimer.current) }, [])
+
+  /* --- auth --- */
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [profileEditorOpen, setProfileEditorOpen] = useState(false)
-  const [editDisplayName, setEditDisplayName] = useState('')
-  const [editUsername, setEditUsername] = useState('')
-  const [editBio, setEditBio] = useState('')
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [bannerFile, setBannerFile] = useState<File | null>(null)
-  const [avatarPreview, setAvatarPreview] = useState('')
-  const [bannerPreview, setBannerPreview] = useState('')
-  const [profileSaveBusy, setProfileSaveBusy] = useState(false)
-  const [profileError, setProfileError] = useState('')
-  const [profileMessage, setProfileMessage] = useState('')
-  const [authReady, setAuthReady] = useState(!isSupabaseConfigured)
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
-  const [authName, setAuthName] = useState('')
-  const [authEmail, setAuthEmail] = useState('')
-  const [authPassword, setAuthPassword] = useState('')
-  const [authBusy, setAuthBusy] = useState(false)
-  const [authFeedback, setAuthFeedback] = useState('')
-  const [authError, setAuthError] = useState('')
-  const [clips, setClips] = useState(starterClips)
-  const [, setClipIndex] = useState(0)
-  const [following, setFollowing] = useState(false)
-  const [duration, setDuration] = useState('30s')
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordedSeconds, setRecordedSeconds] = useState(0)
-  const [cameraMessage, setCameraMessage] = useState('')
-  const [uploadName, setUploadName] = useState('')
-  const [selectedVideo, setSelectedVideo] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState('')
-  const [cameraReady, setCameraReady] = useState(false)
-  const [micEnabled, setMicEnabled] = useState(true)
-  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user')
-  const [uploading, setUploading] = useState(false)
-  const [caption, setCaption] = useState('')
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const recordedChunksRef = useRef<Blob[]>([])
-  const publishedPreviewUrlsRef = useRef(new Set<string>())
-  const recordingTimeoutRef = useRef<number | null>(null)
-  const recordingStartedAtRef = useRef(0)
-
-  useEffect(() => {
-    if (screen !== 'create') return
-    return () => {
-      if (recordingTimeoutRef.current !== null) window.clearTimeout(recordingTimeoutRef.current)
-      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-        recorderRef.current.ondataavailable = null
-        recorderRef.current.onstop = null
-        recorderRef.current.stop()
-      }
-      streamRef.current?.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
-    }
-  }, [screen])
-
-  useEffect(() => {
-    if (!isRecording) return
-    const timer = window.setInterval(() => {
-      setRecordedSeconds(Math.floor((Date.now() - recordingStartedAtRef.current) / 1000))
-    }, 250)
-    return () => window.clearInterval(timer)
-  }, [isRecording])
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl.startsWith('blob:') && !publishedPreviewUrlsRef.current.has(previewUrl)) URL.revokeObjectURL(previewUrl)
-    }
-  }, [previewUrl])
-
-  useEffect(() => () => {
-    publishedPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
-  }, [])
-
-  useEffect(() => () => {
-    if (avatarPreview.startsWith('blob:')) URL.revokeObjectURL(avatarPreview)
-  }, [avatarPreview])
-
-  useEffect(() => () => {
-    if (bannerPreview.startsWith('blob:')) URL.revokeObjectURL(bannerPreview)
-  }, [bannerPreview])
-
-  useEffect(() => {
-    if (!streamRef.current || !videoRef.current || previewUrl) return
-    videoRef.current.srcObject = streamRef.current
-    void videoRef.current.play().catch(() => undefined)
-  }, [cameraReady, previewUrl, screen])
 
   useEffect(() => {
     if (!supabase) return
-
     let active = true
     const client = supabase
     const { data: { subscription } } = client.auth.onAuthStateChange((_event, nextSession) => {
       if (active) setSession(nextSession)
     })
-
-    void client.auth.getSession().then(({ data, error }) => {
+    void client.auth.getSession().then(({ data }) => {
       if (!active) return
-      if (error) setAuthError(error.message)
       setSession(data.session)
-      setAuthReady(true)
     })
-
-    return () => {
-      active = false
-      subscription.unsubscribe()
-    }
+    return () => { active = false; subscription.unsubscribe() }
   }, [])
 
   useEffect(() => {
-    if (!supabase || !session) {
-      setProfile(null)
-      return
-    }
-
+    if (!supabase || !session) { setProfile(null); return }
     let active = true
-    void supabase.from('profiles').select('username, display_name, bio, avatar_url, banner_url').eq('id', session.user.id).maybeSingle().then(({ data }) => {
-      if (active && data) setProfile(data)
-    })
-
-    return () => {
-      active = false
-    }
+    void supabase.from('profiles').select('username, display_name, bio, avatar_url, banner_url')
+      .eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => { if (active && data) setProfile(data) })
+    return () => { active = false }
   }, [session])
 
-  function openScreen(nextScreen: Screen) {
-    setScreen(nextScreen)
-    setIsRecording(false)
-    setCameraMessage('')
-    setProfileEditorOpen(false)
+  /* --- account identity --- */
+  const accountEmail = session?.user.email ?? ''
+  const accountName = profile?.display_name || String(session?.user.user_metadata?.display_name ?? '') || accountEmail.split('@')[0] || 'Maya Chen'
+  const accountHandle = `@${profile?.username || accountEmail.split('@')[0] || 'mayamakes'}`
+  const accountInitials = initialsOf(accountName) || 'MC'
+
+  /* --- feed --- */
+  const [clips, setClips] = useState<Clip[]>(starterClips)
+  const [liked, setLiked] = useState<Record<string, boolean>>({})
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [soundsOpen, setSoundsOpen] = useState(false)
+  const [selectedSound, setSelectedSound] = useState<Sound>(sounds[0])
+  const [soundQuery, setSoundQuery] = useState('')
+
+  function toggleLike(clipId: string) {
+    setLiked((current) => ({ ...current, [clipId]: !current[clipId] }))
   }
+
+  /* --- comments --- */
+  const [commentList, setCommentList] = useState<Comment[]>(starterComments)
+  const [commentDraft, setCommentDraft] = useState('')
+  const [likedComments, setLikedComments] = useState<Record<string, boolean>>({})
+
+  function submitComment(event: FormEvent) {
+    event.preventDefault()
+    const text = commentDraft.trim()
+    if (!text) return
+    setCommentList((current) => [{ id: crypto.randomUUID(), author: accountName, initials: accountInitials, time: 'now', text, likes: 0 }, ...current])
+    setCommentDraft('')
+    notify('Comment posted.')
+  }
+
+  /* --- stories --- */
+  const [storyOpen, setStoryOpen] = useState(false)
+  const [storyIndex, setStoryIndex] = useState(0)
+  const [storyReply, setStoryReply] = useState('')
+  const currentStory = stories[storyIndex]
+
+  function openStory(index: number) {
+    setStoryIndex(index)
+    setStoryOpen(true)
+  }
+  function moveStory(direction: 1 | -1) {
+    setStoryIndex((current) => (current + direction + stories.length) % stories.length)
+  }
+  function submitStoryReply(event: FormEvent) {
+    event.preventDefault()
+    if (!storyReply.trim()) return
+    setStoryReply('')
+    setStoryOpen(false)
+    setScreen('message')
+    notify('Story reply opened in Messages.')
+  }
+
+  /* --- live --- */
+  const [liveOpen, setLiveOpen] = useState(false)
+  const [liveChat, setLiveChat] = useState([
+    { id: 1, name: 'sofia.draws', text: 'This view is incredible!' },
+    { id: 2, name: 'jonah.lee', text: 'Adding this spot to my list.' },
+    { id: 3, name: 'nico.lane', text: 'Stay for the sunset 🌅' },
+  ])
+  const [liveDraft, setLiveDraft] = useState('')
+  const [liveHeart, setLiveHeart] = useState(false)
+
+  function submitLiveChat(event: FormEvent) {
+    event.preventDefault()
+    const text = liveDraft.trim()
+    if (!text) return
+    setLiveChat((current) => [...current, { id: Date.now(), name: 'you', text }])
+    setLiveDraft('')
+  }
+
+  /* --- messages --- */
+  const [conversations] = useState<Conversation[]>(starterConversations)
+  const [activeConversation, setActiveConversation] = useState<Conversation>(starterConversations[0])
+  const [bubbles, setBubbles] = useState<Bubble[]>([
+    { id: 1, mine: false, text: 'Hey Maya! I tried that blue wash you shared on my last edit.' },
+    { id: 2, mine: true, text: 'Oh nice, how did it turn out?' },
+    { id: 3, mine: false, text: 'That color palette is perfect. Sending you the result tonight ✨' },
+  ])
+  const [chatDraft, setChatDraft] = useState('')
+  const [messageSearch, setMessageSearch] = useState('')
+
+  function openConversation(conversation: Conversation) {
+    setActiveConversation(conversation)
+    setBubbles([{ id: 1, mine: false, text: conversation.preview }, { id: 2, mine: true, text: 'Thanks for sending that. I’ll take a look!' }])
+  }
+  function sendChat(event: FormEvent) {
+    event.preventDefault()
+    const text = chatDraft.trim()
+    if (!text) return
+    setBubbles((current) => [...current, { id: Date.now(), mine: true, text }])
+    setChatDraft('')
+  }
+
+  /* --- people modal --- */
+  const [peopleOpen, setPeopleOpen] = useState(false)
+  const [peopleGroup, setPeopleGroup] = useState<'followers' | 'following'>('following')
+  const [personFollowState, setPersonFollowState] = useState<Record<string, string>>({})
+
+  function openPeople(group: 'followers' | 'following') {
+    setPeopleGroup(group)
+    setPeopleOpen(true)
+  }
+
+  /* --- settings --- */
+  const [settingsOn, setSettingsOn] = useState<Record<string, boolean>>(
+    Object.fromEntries(settingsOptions.map((option) => [option.key, option.on])),
+  )
+
+  /* --- profile editing --- */
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editUsername, setEditUsername] = useState('')
+  const [editBio, setEditBio] = useState('')
+  const [profileBusy, setProfileBusy] = useState(false)
 
   function beginProfileEdit() {
-    setEditDisplayName(profile?.display_name || accountName)
-    setEditUsername(profile?.username || accountEmail.split('@')[0] || '')
-    setEditBio(profile?.bio || '')
-    setAvatarFile(null)
-    setBannerFile(null)
-    setAvatarPreview('')
-    setBannerPreview('')
-    setProfileError('')
-    setProfileMessage('')
-    setProfileEditorOpen(true)
-  }
-
-  function selectProfileImage(file: File | undefined, target: 'avatar' | 'banner') {
-    if (!file) return
-    const supportedTypes = ['image/jpeg', 'image/png', 'image/webp']
-    if (!supportedTypes.includes(file.type)) {
-      setProfileError('Choose a JPG, PNG, or WebP image.')
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setProfileError('Profile images must be 5 MB or smaller.')
-      return
-    }
-    setProfileError('')
-    const preview = URL.createObjectURL(file)
-    if (target === 'avatar') {
-      setAvatarFile(file)
-      setAvatarPreview(preview)
-    } else {
-      setBannerFile(file)
-      setBannerPreview(preview)
-    }
+    setEditName(accountName)
+    setEditUsername(profile?.username || accountHandle.replace(/^@/, ''))
+    setEditBio(profile?.bio || 'Collecting small moments, good food, and places with no signal.')
+    setProfileOpen(true)
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase || !session) {
-      setProfileError('Sign in before editing your profile.')
-      return
-    }
-
-    const username = editUsername.trim().toLowerCase()
-    const displayName = editDisplayName.trim()
+    const username = editUsername.trim().replace(/^@/, '').toLowerCase()
+    const displayName = editName.trim()
     if (!/^[a-z0-9_]{3,24}$/.test(username)) {
-      setProfileError('Username must be 3–24 characters using letters, numbers, or underscores.')
+      notify('Username must be 3–24 characters using letters, numbers, or underscores.')
       return
     }
-
-    setProfileSaveBusy(true)
-    setProfileError('')
-    const uploadedPaths: string[] = []
-    const userId = session.user.id
-
+    if (!supabase || !session) {
+      setProfile({ username, display_name: displayName, bio: editBio.trim(), avatar_url: profile?.avatar_url ?? null, banner_url: profile?.banner_url ?? null })
+      setProfileOpen(false)
+      notify('Profile preview updated.')
+      return
+    }
+    setProfileBusy(true)
     try {
-      const profilePatch: Partial<Profile> & { updated_at: string } = {
-        display_name: displayName,
-        username,
-        bio: editBio.trim(),
-        updated_at: new Date().toISOString(),
-      }
-
-      async function uploadProfileImage(file: File, kind: 'avatar' | 'banner') {
-        const extension = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp'
-        const path = `${userId}/${kind}/${crypto.randomUUID()}.${extension}`
-        const { error } = await supabase!.storage.from('arc-profiles').upload(path, file, { contentType: file.type, upsert: false })
-        if (error) throw error
-        uploadedPaths.push(path)
-        return supabase!.storage.from('arc-profiles').getPublicUrl(path).data.publicUrl
-      }
-
-      if (avatarFile) profilePatch.avatar_url = await uploadProfileImage(avatarFile, 'avatar')
-      if (bannerFile) profilePatch.banner_url = await uploadProfileImage(bannerFile, 'banner')
-
-      const { data, error } = await supabase.from('profiles').update(profilePatch).eq('id', session.user.id).select('username, display_name, bio, avatar_url, banner_url').single()
+      const { data, error } = await supabase.from('profiles')
+        .update({ display_name: displayName, username, bio: editBio.trim(), updated_at: new Date().toISOString() })
+        .eq('id', session.user.id)
+        .select('username, display_name, bio, avatar_url, banner_url')
+        .single()
       if (error) throw error
-
       setProfile(data)
-      setProfileEditorOpen(false)
-      setAvatarFile(null)
-      setBannerFile(null)
-      setAvatarPreview('')
-      setBannerPreview('')
-      setProfileMessage('Profile updated.')
+      setProfileOpen(false)
+      notify('Profile updated.')
     } catch (error) {
-      if (uploadedPaths.length) await supabase.storage.from('arc-profiles').remove(uploadedPaths)
-      const message = error instanceof Error ? error.message : 'Could not save your profile. Try again.'
-      setProfileError(message.toLowerCase().includes('duplicate') ? 'That username is already taken.' : message)
+      notify(toErrorMessage(error, 'Could not save your profile. Try again.'))
     } finally {
-      setProfileSaveBusy(false)
+      setProfileBusy(false)
     }
   }
 
-  async function submitAuth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!supabase) return
-
-    setAuthBusy(true)
-    setAuthError('')
-    setAuthFeedback('')
-
-    try {
-      if (authMode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({
-          email: authEmail.trim(),
-          password: authPassword,
-          options: { data: { display_name: authName.trim() } },
-        })
-        if (error) throw error
-        if (!data.session) setAuthFeedback('Check your email to confirm your account, then sign in here.')
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword })
-        if (error) throw error
-      }
-    } catch (error) {
-      setAuthError(error instanceof Error ? error.message : 'Something went wrong. Please try again.')
-    } finally {
-      setAuthBusy(false)
-    }
-  }
-
-  async function signOut() {
-    if (!supabase) return
-    const { error } = await supabase.auth.signOut()
-    if (error) setAuthError(error.message)
-    else openScreen('feed')
-  }
-
-  async function startCamera(facing: 'user' | 'environment' = cameraFacing) {
-    setCameraMessage('')
-    setCameraReady(false)
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraMessage('Camera access needs a current browser and a secure page (HTTPS or localhost).')
-      return
-    }
-
-    streamRef.current?.getTracks().forEach((track) => track.stop())
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1920 } },
-        audio: true,
-      })
-      streamRef.current = stream
-      setCameraFacing(facing)
-      setMicEnabled(true)
-      setCameraReady(true)
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      }
-    } catch (error) {
-      const name = error instanceof DOMException ? error.name : ''
-      const message = name === 'NotAllowedError'
-        ? 'Camera or microphone permission was blocked. Allow access in your browser settings and try again.'
-        : name === 'NotFoundError'
-          ? 'No camera or microphone was found on this device.'
-          : 'Could not open the camera. Check that another app is not using it, then try again.'
-      setCameraMessage(message)
-      setCameraReady(false)
-    }
-  }
+  /* --- camera / recording / publishing (real functionality) --- */
+  const [capturedUrl, setCapturedUrl] = useState('')
+  const [capturedName, setCapturedName] = useState('')
+  const [capturedFile, setCapturedFile] = useState<File | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingSeconds, setRecordingSeconds] = useState(0)
+  const [uploading, setUploading] = useState(false)
+  const [caption, setCaption] = useState('A little more outside time. #weekend #bluehour')
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const timeoutRef = useRef<number | null>(null)
+  const keepUrlsRef = useRef(new Set<string>())
+  const startedAtRef = useRef(0)
 
   function stopCamera() {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
-    setCameraReady(false)
     if (videoRef.current) videoRef.current.srcObject = null
   }
 
-  function selectVideo(file?: File) {
-    if (!file) return
-    if (!file.type.startsWith('video/')) {
-      setCameraMessage('Choose a video file to post.')
+  async function startCamera() {
+    setScreen('create')
+    if (!navigator.mediaDevices?.getUserMedia) {
+      notify('Camera access needs HTTPS or localhost.')
       return
     }
-    if (file.size > 100 * 1024 * 1024) {
-      setCameraMessage('Videos must be 100 MB or smaller.')
-      return
-    }
-    if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
-    setSelectedVideo(file)
-    setUploadName(file.name)
-    setPreviewUrl(URL.createObjectURL(file))
-    setCameraMessage('Video ready. Add a caption and post it when you’re set.')
     stopCamera()
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1080 }, height: { ideal: 1920 } },
+        audio: true,
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play().catch(() => undefined)
+      }
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : ''
+      notify(name === 'NotAllowedError' ? 'Camera permission was blocked. Allow access and try again.' : 'Could not open the camera. Try again.')
+    }
+  }
+
+  useEffect(() => () => {
+    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current)
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.ondataavailable = null
+      recorderRef.current.onstop = null
+      recorderRef.current.stop()
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    keepUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+  }, [])
+
+  useEffect(() => {
+    if (!isRecording) return
+    const timer = window.setInterval(() => {
+      setRecordingSeconds(Math.floor((Date.now() - startedAtRef.current) / 1000))
+    }, 250)
+    return () => window.clearInterval(timer)
+  }, [isRecording])
+
+  function adoptVideoFile(file: File) {
+    if (capturedUrl.startsWith('blob:') && !keepUrlsRef.current.has(capturedUrl)) URL.revokeObjectURL(capturedUrl)
+    setCapturedFile(file)
+    setCapturedName(file.name)
+    setCapturedUrl(URL.createObjectURL(file))
+    stopCamera()
+    setIsRecording(false)
+    setScreen('post')
+    notify('Media selected. Add details and publish.')
+  }
+
+  function selectUpload(file?: File) {
+    if (!file) return
+    if (!file.type.startsWith('video/')) { notify('Choose a video file to post.'); return }
+    if (file.size > 100 * 1024 * 1024) { notify('Videos must be 100 MB or smaller.'); return }
+    adoptVideoFile(file)
   }
 
   function startRecording() {
     const stream = streamRef.current
-    if (!stream) {
-      setCameraMessage('Enable the camera and microphone before recording.')
-      return
-    }
-    if (typeof MediaRecorder === 'undefined') {
-      setCameraMessage('Video recording is not supported in this browser. Try a recent version of Chrome, Edge, or Safari.')
-      return
-    }
-
+    if (!stream) { notify('Enable the camera before recording.'); return }
+    if (typeof MediaRecorder === 'undefined') { notify('Recording is not supported in this browser.'); return }
     const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
       .find((type) => MediaRecorder.isTypeSupported(type))
     try {
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
-      recordedChunksRef.current = []
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) recordedChunksRef.current.push(event.data)
-      }
+      chunksRef.current = []
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) chunksRef.current.push(event.data) }
       recorder.onstop = () => {
         const type = recorder.mimeType || 'video/webm'
-        const blob = new Blob(recordedChunksRef.current, { type })
+        const blob = new Blob(chunksRef.current, { type })
         if (blob.size > 0) {
           const extension = type.includes('mp4') ? 'mp4' : 'webm'
-          const file = new File([blob], `arc-video-${Date.now()}.${extension}`, { type })
-          selectVideo(file)
+          adoptVideoFile(new File([blob], `arc-video-${Date.now()}.${extension}`, { type }))
         } else {
-          setCameraMessage('The recording was empty. Try recording again.')
+          notify('The recording was empty. Try again.')
         }
         stream.getTracks().forEach((track) => track.stop())
         streamRef.current = null
-        setCameraReady(false)
-        setIsRecording(false)
-        if (recordingTimeoutRef.current !== null) window.clearTimeout(recordingTimeoutRef.current)
+        if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current)
       }
       recorderRef.current = recorder
-      recordingStartedAtRef.current = Date.now()
-      setRecordedSeconds(0)
+      startedAtRef.current = Date.now()
+      setRecordingSeconds(0)
       setIsRecording(true)
       recorder.start(250)
-      recordingTimeoutRef.current = window.setTimeout(() => {
+      timeoutRef.current = window.setTimeout(() => {
         if (recorder.state === 'recording') recorder.stop()
-      }, Number.parseInt(duration, 10) * 1000)
+      }, 30000)
     } catch {
-      setCameraMessage('Could not start recording. Check camera permissions and try again.')
+      notify('Could not start recording. Check camera permissions.')
     }
   }
 
@@ -468,292 +634,561 @@ function App() {
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
   }
 
-  async function publishVideo() {
-    if (!selectedVideo) {
-      setCameraMessage('Record a video or choose one to upload first.')
-      return
-    }
-    setUploading(true)
-    setCameraMessage('')
-    let videoUrl = previewUrl
-    let storagePath: string | null = null
+  function toggleRecord() {
+    if (isRecording) stopRecording()
+    else if (streamRef.current) startRecording()
+    else void startCamera()
+  }
 
+  function discardCapture() {
+    if (capturedUrl.startsWith('blob:') && !keepUrlsRef.current.has(capturedUrl)) URL.revokeObjectURL(capturedUrl)
+    setCapturedUrl('')
+    setCapturedName('')
+    setCapturedFile(null)
+    setCaption('')
+    notify('Draft discarded.')
+  }
+
+  async function publishVideo() {
+    if (!capturedFile) { notify('Record or choose a video first.'); return }
+    setUploading(true)
+    let videoUrl = capturedUrl
     try {
       if (supabase && session) {
-        const extension = selectedVideo.name.split('.').pop()?.toLowerCase() || 'webm'
-        storagePath = `${session.user.id}/${crypto.randomUUID()}.${extension}`
-        const { error: uploadError } = await supabase.storage.from('arc-videos').upload(storagePath, selectedVideo, {
-          contentType: selectedVideo.type || 'video/webm',
-          upsert: false,
+        const extension = capturedFile.name.split('.').pop()?.toLowerCase() || 'webm'
+        const storagePath = `${session.user.id}/${crypto.randomUUID()}.${extension}`
+        const { error: uploadError } = await supabase.storage.from('arc-videos').upload(storagePath, capturedFile, {
+          contentType: capturedFile.type || 'video/webm', upsert: false,
         })
         if (uploadError) throw uploadError
-
-        const { data: publicUrl } = supabase.storage.from('arc-videos').getPublicUrl(storagePath)
-        videoUrl = publicUrl.publicUrl
+        videoUrl = supabase.storage.from('arc-videos').getPublicUrl(storagePath).data.publicUrl
         const { error: insertError } = await supabase.from('videos').insert({
           user_id: session.user.id,
           storage_path: storagePath,
           caption: caption.trim(),
-          duration_seconds: recordedSeconds || null,
+          duration_seconds: recordingSeconds || null,
           status: 'published',
         })
         if (insertError) {
           await supabase.storage.from('arc-videos').remove([storagePath])
-          storagePath = null
           throw insertError
         }
-      } else if (previewUrl.startsWith('blob:')) {
-        publishedPreviewUrlsRef.current.add(previewUrl)
+      } else {
+        keepUrlsRef.current.add(capturedUrl)
       }
-
       const newClip: Clip = {
+        id: crypto.randomUUID(),
         creator: session ? accountName : 'You',
         handle: session ? accountHandle : '@you',
         initials: session ? accountInitials : 'YU',
-        caption: caption.trim() || 'A new moment from my corner of Arc.',
-        audio: 'Original sound',
+        caption: caption.trim() || 'A little more outside time.',
+        tags: '#newpost',
+        audio: selectedSound.title,
         likes: 0,
         comments: 0,
         image: '',
         imageAlt: 'Your newly posted video',
-        color: 'blue',
         videoSrc: videoUrl,
         ownerId: session?.user.id,
       }
       setClips((current) => [newClip, ...current])
-      setClipIndex(0)
-      setSelectedVideo(null)
-      setUploadName('')
-      setPreviewUrl('')
+      setCapturedUrl('')
+      setCapturedName('')
+      setCapturedFile(null)
       setCaption('')
-      setRecordedSeconds(0)
-      openScreen('feed')
+      setRecordingSeconds(0)
+      setScreen('home')
+      notify('Post published. It is at the top of your feed.')
     } catch (error) {
-      setCameraMessage(error instanceof Error ? error.message : 'Video upload failed. Check your connection and try again.')
+      notify(toErrorMessage(error, 'Video upload failed. Check your connection and try again.'))
     } finally {
       setUploading(false)
     }
   }
 
-  const accountEmail = session?.user.email ?? ''
-  const accountName: string = profile?.display_name || String(session?.user.user_metadata.display_name ?? '') || accountEmail.split('@')[0] || 'Arc creator'
-  const accountHandle = `@${profile?.username || accountEmail.split('@')[0] || 'creator'}`
-  const accountInitials = accountName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
-  const accountClips = session ? clips.filter((item) => item.ownerId === session.user.id) : []
+  /* --- derived --- */
+  const myClips = useMemo(() => (session ? clips.filter((clip) => clip.ownerId === session.user.id) : []), [clips, session])
+  const profileGridItems = session && myClips.length > 0
+    ? myClips.map((clip) => ({ views: clip.likes ? formatCount(clip.likes) : 'New', image: clip.image, alt: clip.caption, video: clip.videoSrc }))
+    : profileTiles.map((tile) => ({ ...tile, video: undefined as string | undefined }))
+  const filteredSounds = sounds.filter((sound) => `${sound.title} ${sound.artist}`.toLowerCase().includes(soundQuery.trim().toLowerCase()))
+  const filteredConversations = conversations.filter((conversation) => `${conversation.name} ${conversation.preview}`.toLowerCase().includes(messageSearch.trim().toLowerCase()))
 
-  if (isSupabaseConfigured && !authReady) {
-    return <main className="stage"><section className="auth-device auth-loading"><span className="auth-spinner" /><span>Connecting to Arc</span></section></main>
+  function navigate(next: ScreenId) {
+    setScreen(next)
+    if (next !== 'create') { stopCamera(); setIsRecording(false) }
   }
 
-  if (isSupabaseConfigured && !session) {
-    return (
-      <main className="stage">
-        <section className="auth-device" aria-label="Arc account">
-          <div className="auth-orbit auth-orbit-one" /><div className="auth-orbit auth-orbit-two" />
-          <div className="auth-content">
-            <button className="auth-wordmark" onClick={() => { setAuthMode('signin'); setAuthFeedback(''); setAuthError('') }}>Arc<span>.</span></button>
-            <div className="auth-overline"><span /> A DIFFERENT KIND OF FEED</div>
-            <h1>{authMode === 'signup' ? <>Make your<br /><em>own corner.</em></> : <>Good things<br /><em>start here.</em></>}</h1>
-            <p className="auth-intro">{authMode === 'signup' ? 'Create an account to find your people and share what you love.' : 'Sign in to pick up where your people left off.'}</p>
-            <form className="auth-form" onSubmit={submitAuth}>
-              {authMode === 'signup' && <label>Your name<input autoComplete="name" value={authName} onChange={(event) => setAuthName(event.target.value)} placeholder="What should we call you?" required maxLength={60} /></label>}
-              <label>Email address<input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="you@example.com" required /></label>
-              <label>Password<input type="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 8 characters" minLength={8} required /></label>
-              {authError && <p className="auth-error" role="alert">{authError}</p>}
-              {authFeedback && <p className="auth-feedback" role="status">{authFeedback}</p>}
-              <button className="auth-submit" type="submit" disabled={authBusy}>{authBusy ? 'One moment…' : authMode === 'signup' ? 'Create account' : 'Sign in'}<Send size={15} /></button>
-            </form>
-            <p className="auth-switch">{authMode === 'signup' ? 'Already have an account?' : 'New around here?'} <button onClick={() => { setAuthMode(authMode === 'signup' ? 'signin' : 'signup'); setAuthError(''); setAuthFeedback('') }}>{authMode === 'signup' ? 'Sign in' : 'Create an account'}</button></p>
-            <div className="auth-footer"><span>MAKE ROOM FOR GOOD THINGS</span><span>ARC / 01</span></div>
-          </div>
-        </section>
-      </main>
-    )
-  }
+  /* ---------------------------------------------------------------- */
+  /* Render                                                           */
+  /* ---------------------------------------------------------------- */
 
   return (
-    <main className="stage">
-      <div className={`app-device screen-${screen}`}>
-        <DesktopSidebar screen={screen} onNavigate={openScreen} accountName={session ? accountName : ''} />
-        {screen === 'feed' && (
-          <section className="feed-screen artifact-screen" aria-label="Artifact preview">
-            <header className="artifact-header">
-              <div className="artifact-title-wrap">
-                <span className="artifact-icon">⌂</span>
-                <span className="artifact-title">Visual: Short-Video App UI</span>
-              </div>
-              <div className="artifact-actions">
-                <button className="artifact-mini action-light" aria-label="Open in editor">E</button>
-                <button className="artifact-mini" aria-label="View preview">◌</button>
-                <button className="artifact-mini" aria-label="Chat">◔</button>
-                <button className="artifact-mini" aria-label="More actions">⋯</button>
-              </div>
-            </header>
+    <div className={`app-shell${screen === 'home' ? ' home-open' : ''}${screen === 'message' ? ' conversation-open' : ''}`}>
+      <div className="device-status"><span>9:41</span><span>◔ &nbsp; ◉ &nbsp; ▰</span></div>
 
-            <div className="artifact-toolbar" aria-label="Artifact controls">
-              <button className="artifact-tool active">Page 1</button>
-              <button className="artifact-tool"><span>✎</span></button>
-              <button className="artifact-tool"><span>◌</span></button>
-              <button className="artifact-tool"><span>#</span></button>
-              <button className="artifact-tool"><span>⌂</span></button>
-              <button className="artifact-tool"><span>◔</span></button>
-              <button className="artifact-tool"><span>◍</span></button>
-              <button className="artifact-tool"><span>⌁</span></button>
-            </div>
-
-            <div className="artifact-canvas">
-              <div className="artifact-column artifact-card-column">
-                <div className="artifact-card-label">Home</div>
-                <div className="artifact-mobile-preview">
-                  <div className="mobile-frame">
-                    <div className="mobile-header">
-                      <span className="brand-mark">V</span>
-                      <span className="brand-name">Visual</span>
-                      <div className="header-icons"><span>◌</span><span>◍</span><span>＋</span></div>
-                    </div>
-                    <div className="mobile-nav">
-                      <span className="nav-item selected">Home</span>
-                      <span className="nav-item">Profile</span>
-                      <span className="nav-item">Create</span>
-                      <span className="nav-item">Post</span>
-                    </div>
-                    <div className="mobile-content">
-                      <div className="mini-chart-header">
-                        <span className="mini-dot" />
-                        <span>Trending</span>
-                      </div>
-                      <div className="chart-bars">
-                        <span style={{ height: '48%' }} />
-                        <span style={{ height: '63%' }} />
-                        <span style={{ height: '80%' }} />
-                        <span style={{ height: '56%' }} />
-                        <span style={{ height: '90%' }} />
-                        <span style={{ height: '70%' }} />
-                        <span style={{ height: '87%' }} />
-                        <span style={{ height: '62%' }} />
-                      </div>
-                      <div className="mini-metrics">
-                        <div><span>18.7K</span></div>
-                        <div><span>15.4K</span></div>
-                        <div><span>9.8K</span></div>
-                      </div>
-                    </div>
-                    <div className="mobile-footer">
-                      <button>Discover</button>
-                      <button>Profile</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="artifact-column artifact-card-column">
-                <div className="artifact-card-label">Profile</div>
-                <div className="artifact-empty-card" />
-              </div>
-
-              <div className="artifact-column artifact-card-column">
-                <div className="artifact-card-label">Create</div>
-                <div className="artifact-empty-card" />
-              </div>
-
-              <div className="artifact-column artifact-card-column">
-                <div className="artifact-card-label">Post</div>
-                <div className="artifact-empty-card" />
-              </div>
-
-              <div className="artifact-column artifact-studio-column">
-                <div className="artifact-studio-header">
-                  <span>Studio</span>
-                  <span className="studio-menu">⤴</span>
-                </div>
-                <div className="artifact-studio-preview" />
-              </div>
-            </div>
-          </section>
-        )}
-
-        {screen === 'profile' && (
-          <section className="profile-screen" aria-label="Creator profile">
-            <header className="profile-header"><button className="header-icon" onClick={() => openScreen('feed')} aria-label="Back to feed"><ArrowLeft size={20} /></button><strong>Profile</strong><button className="header-icon" onClick={session ? signOut : undefined} aria-label={session ? 'Sign out' : 'Profile options'}>{session ? <LogOut size={17} /> : <MoreHorizontal size={20} />}</button></header>
-            <div className="profile-hero">{profile?.banner_url && <img className="profile-banner-image" src={profile.banner_url} alt="Profile banner" />}<div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" /><div className="profile-avatar">{session && profile?.avatar_url ? <img src={profile.avatar_url} alt={`${accountName} profile`} /> : session ? accountInitials : 'MC'}</div><div className="profile-buttons">{session ? <button className="primary-pill" onClick={beginProfileEdit}>Edit profile</button> : <><button className={following ? 'primary-pill followed' : 'primary-pill'} onClick={() => setFollowing((value) => !value)}>{following ? <><Check size={15} /> Following</> : 'Follow'}</button><button className="outline-pill" onClick={() => setCameraMessage('Message Maya Cooks')}><Send size={14} /> Message</button></>}</div></div>
-            <div className="profile-info"><h1>{session ? accountName : 'Maya Cooks'}</h1><span className="profile-handle">{session ? accountHandle : '@maya.cooks'}</span><p>{session ? profile?.bio || 'Your Arc profile. Add a little about yourself.' : 'Quick weeknight recipes. New video every day.'}</p></div>
-            <div className="profile-stats"><div><strong>{session ? '0' : '128'}</strong><span>Following</span></div><div><strong>{session ? '0' : '48.2K'}</strong><span>Followers</span></div><div><strong>{session ? '0' : '1.1M'}</strong><span>Likes</span></div></div>
-            <div className="profile-post-heading"><span>VIDEOS</span><button aria-label="Video grid settings"><Settings2 size={16} /></button></div>
-            {session && accountClips.length === 0 ? <div className="profile-empty"><Video size={19} /><strong>Your videos will live here</strong><span>Share your first clip to start building your profile.</span></div> : <div className="video-grid">{(session ? accountClips : clips).map((item, index) => <button key={`${item.handle}-${index}`} className="video-tile" onClick={() => { setClipIndex(clips.indexOf(item)); openScreen('feed') }} aria-label={`Play video: ${item.caption}`}>{item.videoSrc ? <video src={item.videoSrc} muted playsInline /> : <img src={item.image} alt={item.imageAlt} />}<span className="tile-play"><Video size={14} /></span><span className="tile-views">{item.likes ? formatCount(item.likes) : 'New'}</span></button>)}{!session && <button className="video-tile tile-blue" onClick={() => setCameraMessage('More videos are on the way.')} aria-label="More videos"><Sparkles size={21} /><span className="tile-views">410K</span></button>}</div>}
-            {cameraMessage && <div className="profile-message" role="status">{cameraMessage}<button onClick={() => setCameraMessage('')} aria-label="Dismiss"><X size={14} /></button></div>}
-            {profileMessage && <div className="profile-message" role="status">{profileMessage}<button onClick={() => setProfileMessage('')} aria-label="Dismiss"><X size={14} /></button></div>}
-            {profileEditorOpen && <div className="profile-editor-backdrop"><form className="profile-editor" onSubmit={saveProfile} role="dialog" aria-modal="true" aria-labelledby="profile-editor-title">
-              <header className="profile-editor-header"><span><small>YOUR ACCOUNT</small><strong id="profile-editor-title">Edit profile</strong></span><button type="button" className="header-icon" onClick={() => setProfileEditorOpen(false)} aria-label="Close profile editor"><X size={18} /></button></header>
-              <label className="profile-banner-picker" style={{ backgroundImage: bannerPreview ? `url(${bannerPreview})` : profile?.banner_url ? `url(${profile.banner_url})` : undefined }}><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectProfileImage(event.target.files?.[0], 'banner')} /><ImagePlus size={17} /><span>{profile?.banner_url || bannerPreview ? 'Change banner' : 'Add a banner'}</span></label>
-              <div className="profile-avatar-picker-row"><label className="profile-avatar-picker">{avatarPreview || profile?.avatar_url ? <img src={avatarPreview || profile?.avatar_url || ''} alt="Profile photo preview" /> : <span>{accountInitials}</span>}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectProfileImage(event.target.files?.[0], 'avatar')} /><span className="avatar-picker-icon"><ImagePlus size={14} /></span></label><span>Profile photo<br /><small>Square images work best</small></span></div>
-              <label className="editor-field">Display name<input value={editDisplayName} onChange={(event) => setEditDisplayName(event.target.value)} maxLength={60} required /></label>
-              <label className="editor-field">Username<div className="username-input"><span>@</span><input value={editUsername} onChange={(event) => setEditUsername(event.target.value)} minLength={3} maxLength={24} pattern="[A-Za-z0-9_]{3,24}" required /></div></label>
-              <label className="editor-field">Bio<textarea value={editBio} onChange={(event) => setEditBio(event.target.value)} maxLength={160} placeholder="A little about you…" rows={3} /><small>{editBio.length}/160</small></label>
-              {profileError && <p className="auth-error" role="alert">{profileError}</p>}
-              <footer className="profile-editor-actions"><button type="button" className="discard-video" onClick={() => setProfileEditorOpen(false)}>Cancel</button><button type="submit" className="publish-video" disabled={profileSaveBusy}>{profileSaveBusy ? 'Saving…' : 'Save changes'}{!profileSaveBusy && <Check size={14} />}</button></footer>
-            </form></div>}
-            <BottomNav screen={screen} onNavigate={openScreen} />
-          </section>
-        )}
-
-        {screen === 'create' && (
-          <section className="create-screen" aria-label="Create a video">
-            <div className={`camera-preview ${cameraReady ? 'camera-live' : ''} ${previewUrl ? 'has-video-preview' : ''}`}>
-              <div className="camera-preview-bg" />
-              <video ref={videoRef} className="capture-preview" src={previewUrl || undefined} autoPlay={cameraReady && !previewUrl} playsInline muted controls={Boolean(previewUrl)} />
-              <header className="camera-header"><button onClick={() => openScreen('feed')} aria-label="Close camera"><X size={18} /><span>Close</span></button><button onClick={() => setCameraMessage('Choose a sound for your video.')}><Music2 size={15} /><span>Add sound</span></button></header>
-              {!previewUrl && <div className="camera-tools"><button onClick={() => startCamera(cameraFacing === 'user' ? 'environment' : 'user')} disabled={!cameraReady}><span>↔</span>Flip</button><button onClick={() => setCameraMessage('Recording at normal speed.')}><span>1×</span>Speed</button><button onClick={() => setCameraMessage('Filters are coming soon.')}><Sparkles size={15} />Filters</button><button onClick={() => setCameraMessage('Timer is coming soon.')}><span>◷</span>Timer</button></div>}
-              {uploadName && <div className="upload-chip"><Check size={13} />{uploadName}</div>}
-              {cameraMessage && <div className="camera-toast" role="status">{cameraMessage}<button onClick={() => setCameraMessage('')} aria-label="Dismiss"><X size={13} /></button></div>}
-              {!cameraReady && !previewUrl && <div className="camera-permission"><div className="camera-permission-icon"><Video size={22} /><Mic2 size={15} /></div><strong>Let life in.</strong><span>Arc needs your camera and microphone to record a video.</span><button onClick={() => startCamera()}>Enable camera & mic</button></div>}
-              {previewUrl && <div className="post-video-panel"><label htmlFor="video-caption">Add a caption</label><textarea id="video-caption" value={caption} maxLength={500} onChange={(event) => setCaption(event.target.value)} placeholder="Say something about this moment…" /><div className="video-panel-actions"><button className="discard-video" onClick={() => { if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl); setPreviewUrl(''); setSelectedVideo(null); setUploadName(''); setCaption(''); setCameraMessage('') }}>Discard</button><button className="publish-video" onClick={publishVideo} disabled={uploading}>{uploading ? 'Uploading…' : 'Post video'}{!uploading && <ArrowDownToLine size={14} />}</button></div></div>}
-              {!previewUrl && <div className="camera-bottom">
-                <div className="duration-picker" aria-label="Recording length">{['15s', '30s', '60s'].map((value) => <button key={value} className={duration === value ? 'chosen' : ''} onClick={() => setDuration(value)}>{value}</button>)}</div>
-                <div className="capture-row">
-                  <label className="capture-side" aria-label="Upload video"><input type="file" accept="video/mp4,video/webm,video/quicktime,video/x-m4v" onChange={(event) => selectVideo(event.target.files?.[0])} /><ImagePlus size={19} /><span>Upload</span></label>
-                  <button className={isRecording ? 'record-button recording' : 'record-button'} onClick={isRecording ? stopRecording : startRecording} aria-label={isRecording ? 'Stop recording' : 'Start recording'} disabled={!cameraReady && !isRecording}><span /></button>
-                  <button className={micEnabled ? 'capture-side' : 'capture-side muted'} onClick={() => { const track = streamRef.current?.getAudioTracks()[0]; if (!track) { setCameraMessage('Enable the camera to control the microphone.'); return } track.enabled = !track.enabled; setMicEnabled(track.enabled) }} aria-label={micEnabled ? 'Mute microphone' : 'Unmute microphone'}><Mic2 size={19} /><span>{micEnabled ? 'Mic on' : 'Mic off'}</span></button>
-                </div>
-                <p className="record-hint">{isRecording ? `Recording · ${recordedSeconds}s / ${duration}` : cameraReady ? 'Camera ready · tap to record' : 'Enable the camera or upload a clip'}</p>
-              </div>}
-            </div>
-            <div className="camera-sound"><Mic2 size={14} /><span>{cameraReady ? 'Camera and microphone are active' : 'Original sound'}</span><CircleHelp size={14} /></div>
-          </section>
-        )}
-
-        {screen === 'discover' && (
-          <section className="secondary-screen" aria-label="Discover videos"><header className="profile-header"><button className="wordmark" onClick={() => openScreen('feed')}>Arc<span>.</span></button><button className="header-icon" aria-label="Search"><Search size={20} /></button></header><label className="discover-search"><Search size={18} /><input placeholder="Find your next favorite" aria-label="Search creators and videos" /></label><div className="discover-heading"><span>MADE FOR YOUR CURIOSITY</span><h1>Find your<br /><em>next thing.</em></h1></div><div className="discover-chips">{['All', 'Food', 'Outdoors', 'Design', 'Music', 'Daily life'].map((tag, index) => <button className={index === 0 ? 'selected' : ''} key={tag} onClick={() => setCameraMessage(`Showing ${tag.toLowerCase()} videos.`)}>{tag}</button>)}</div><div className="discover-grid">{clips.map((item, index) => <button className="discover-card" key={item.handle} onClick={() => { setClipIndex(index); openScreen('feed') }}><img src={item.image} alt={item.imageAlt} /><span className="discover-card-overlay"><strong>{item.creator}</strong><small>{formatCount(item.likes)} likes</small></span></button>)}</div>{cameraMessage && <div className="profile-message" role="status">{cameraMessage}<button onClick={() => setCameraMessage('')} aria-label="Dismiss"><X size={14} /></button></div>}<BottomNav screen={screen} onNavigate={openScreen} /></section>
-        )}
-
-        {screen === 'inbox' && (
-          <section className="secondary-screen inbox-screen" aria-label="Inbox"><header className="profile-header"><button className="wordmark" onClick={() => openScreen('feed')}>Arc<span>.</span></button><button className="header-icon" aria-label="New message"><Plus size={20} /></button></header><div className="inbox-title"><span>YOUR PEOPLE</span><h1>Inbox</h1><p>Good conversations start somewhere.</p></div><div className="inbox-empty"><div className="inbox-symbol"><MessageCircle size={25} /></div><strong>It’s quiet in here.</strong><span>When someone sends a note, you’ll find it here.</span><button onClick={() => openScreen('discover')}>Meet people <ArrowLeft size={14} /></button></div><BottomNav screen={screen} onNavigate={openScreen} /></section>
-        )}
-      </div>
-      <div className="stage-caption"><span className="stage-dot" /> A FEED THAT MOVES WITH YOU <span>ARC / 01</span></div>
-    </main>
-  )
-}
-
-function BottomNav({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
-  return <nav className="bottom-nav" aria-label="Main navigation">{navItems.map(({ screen: target, label, Icon }) => <button key={target} className={`${screen === target ? 'current' : ''} ${target === 'create' ? 'create-tab' : ''}`} onClick={() => onNavigate(target)} aria-label={label} aria-current={screen === target ? 'page' : undefined}><Icon size={target === 'create' ? 20 : 19} strokeWidth={target === 'create' ? 2.4 : 1.8} /><span>{label}</span></button>)}</nav>
-}
-
-function DesktopSidebar({ screen, onNavigate, accountName }: { screen: Screen; onNavigate: (screen: Screen) => void; accountName: string }) {
-  const initials = accountName ? accountName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() : 'A'
-
-  return (
-    <aside className="desktop-sidebar">
-      <button className="desktop-brand" onClick={() => onNavigate('feed')}>Arc<span>.</span></button>
-      <span className="desktop-nav-label">YOUR SPACE</span>
-      <nav className="desktop-nav" aria-label="Desktop navigation">
-        {navItems.map(({ screen: target, label, Icon }) => <button key={target} className={`${screen === target ? 'active' : ''} ${target === 'create' ? 'desktop-create-link' : ''}`} onClick={() => onNavigate(target)} aria-current={screen === target ? 'page' : undefined}><Icon size={18} /><span>{label}</span>{screen === target && <i />}</button>)}
+      {/* ---------- Sidebar ---------- */}
+      <aside className="sidebar">
+        <button className="brand" onClick={() => navigate('home')}><span className="brand-mark"><VisualMark /></span><span>Visual</span></button>
+        <div className="nav-label">YOUR FEED</div>
+        <nav className="side-nav" aria-label="Main navigation">
+          {NAV_MAIN.map((item) => (
+            <button key={item.id} className={`${screen === item.id ? 'active' : ''}${item.create ? ' create-link' : ''}`} onClick={() => (item.create ? startCamera() : navigate(item.id))}>
+              <span className="nav-icon">{item.icon}</span>{item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="nav-label" style={{ marginTop: 22 }}>CREATOR SPACE</div>
+        <nav className="side-nav" aria-label="Creator navigation">
+          {NAV_CREATOR.map((item) => (
+            <button key={item.id} className={screen === item.id ? 'active' : ''} onClick={() => navigate(item.id)}>
+              <span className="nav-icon">{item.icon}</span>{item.label}
+            </button>
+          ))}
       </nav>
-      <div className="sidebar-bottom">
-        <div className="sidebar-note"><Sparkles size={16} /><strong>Find your frequency.</strong><span>Follow the things that make you, you.</span></div>
-        <div className="sidebar-account"><span className="sidebar-account-avatar">{initials}</span><span><strong>{accountName || 'Arc guest'}</strong><small>{accountName ? 'Your account' : 'Browsing the demo'}</small></span><MoreHorizontal size={17} /></div>
+      <div className="sidebar-spacer" />
+      <div className="creator-mini">
+        <Avatar initials={accountInitials} src={profile?.avatar_url} />
+        <span><strong>{accountName}</strong><small>{accountHandle}</small></span>
+        <button className="sidebar-more" onClick={() => navigate('settings')} aria-label="Account settings">•••</button>
       </div>
     </aside>
+
+      {/* ---------- Main ---------- */ }
+  <div className="main-area">
+    <header className="topbar">
+      <div className="mobile-brand"><span className="mobile-brand-mark"><VisualMark /></span>Visual</div>
+      <label className="searchbox"><span>⌕</span><input aria-label="Search" placeholder="Search creators, sounds, and videos" /></label>
+      <span className="topbar-spacer" />
+      <span className="topbar-label">Make room for good things</span>
+      <button className="phone-story-shortcut" onClick={() => openStory(2)} aria-label="Open stories"><Avatar initials="SK" src={stories[2].image} /></button>
+      <button className="top-icon" onClick={() => navigate('studio')} aria-label="Open Studio">▥</button>
+      <button className="top-icon" onClick={() => navigate('settings')} aria-label="Open settings">⚙</button>
+      <button className="top-create" onClick={startCamera}>＋ Create</button>
+    </header>
+
+    <main className="main-content">
+      {/* ================= HOME ================= */}
+      <section className={`screen${screen === 'home' ? ' active' : ''}`} data-view="home" aria-label="Home feed">
+        <div className="feed-layout">
+          <div className="feed-main">
+            <div className="feed-heading">
+              <h1>Home</h1>
+              <div className="feed-tabs">
+                {['For you', 'Following', 'Live'].map((tab, index) => (
+                  <button key={tab} className={index === 0 ? 'active' : ''} onClick={() => (tab === 'Live' ? setLiveOpen(true) : notify(`${tab} feed selected in this preview.`))}>{tab}</button>
+                ))}
+              </div>
+            </div>
+            <div className="story-strip" aria-label="Stories">
+              {stories.map((story, index) => (
+                <button key={story.id} className="story-item" onClick={() => openStory(index)}>
+                  <span className="story-ring">
+                    <img src={story.image} alt="" />
+                    {index === 0 && <span className="story-add">+</span>}
+                  </span>
+                  <span>{story.name}</span>
+                </button>
+              ))}
+            </div>
+            <div className="video-layout" aria-label="For you videos">
+              {clips.map((clip) => (
+                <VideoStage
+                  key={clip.id}
+                  clip={clip}
+                  liked={!!liked[clip.id]}
+                  onLike={() => toggleLike(clip.id)}
+                  onComments={() => setCommentsOpen(true)}
+                  onShare={() => notify('Share link copied in this preview.')}
+                  onSave={() => notify('Saved to your collection.')}
+                  onSound={() => setSoundsOpen(true)}
+                />
+              ))}
+            </div>
+          </div>
+          <aside className="feed-aside">
+            <section className="aside-panel">
+              <div className="panel-title"><strong>Trending now</strong><button onClick={() => navigate('discover')}>Explore all →</button></div>
+              {trends.map((trend, index) => (
+                <div className="trend-row" key={trend.tag}>
+                  <span className="trend-number">{String(index + 1).padStart(2, '0')}</span>
+                  <span><b>{trend.tag}</b><small>{trend.count}</small></span>
+                  <span className="trend-growth">{trend.growth}</span>
+                </div>
+              ))}
+            </section>
+            <section className="aside-panel">
+              <div className="panel-title"><strong>Creators to follow</strong><button onClick={() => notify('Suggestions refreshed.')}>Refresh</button></div>
+              {suggestedCreators.map((creator) => (
+                <div className="suggest-row" key={creator.name}>
+                  <Avatar initials={creator.initials} size={30} />
+                  <span><b>{creator.name}</b><small>{creator.meta}</small></span>
+                  <button className="follow-button">Follow</button>
+                </div>
+              ))}
+              <p className="panel-note">Your feed gets better when it sounds like you.</p>
+            </section>
+            <section className="aside-panel">
+              <div className="panel-title"><strong>Today on Arc</strong><span style={{ color: '#68c4ff', fontSize: 9 }}>02 / 05</span></div>
+              <p className="panel-note">New voices, good finds, and small moments worth keeping.</p>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      {/* ================= DISCOVER ================= */}
+      <section className={`screen${screen === 'discover' ? ' active' : ''}`} data-view="discover" aria-label="Discover videos">
+        <PageHead
+          title="Discover"
+          subtitle="Find a new corner of the internet."
+          tools={<><button className="secondary-button">⌕ Search sounds</button><button className="primary-button">Explore tags</button></>}
+        />
+        <div className="discover-grid">
+          {discoverCards.map((card) => (
+            <article className="discover-card" key={card.title}>
+              <img src={card.image} alt={card.alt} />
+              <div className="discover-card-info"><strong>{card.title}</strong><small>{card.meta}</small></div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* ================= CREATE ================= */}
+      <section className={`screen${screen === 'create' ? ' active' : ''}`} data-view="create" aria-label="Create video">
+        <PageHead
+          title="Create"
+          subtitle="Capture a moment or bring in a clip."
+          tools={<><button className="secondary-button">Drafts · 2</button><button className="primary-button" onClick={() => (capturedUrl ? navigate('post') : notify('Record or upload a clip first.'))}>Continue to post →</button></>}
+        />
+        <div className="compose-layout">
+          <div className="capture-preview">
+            <video ref={videoRef} muted playsInline autoPlay style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }} />
+            <span className="capture-status">{isRecording ? `● RECORDING · ${recordingSeconds}s` : 'CAMERA PREVIEW'}</span>
+            <button className="capture-center" onClick={toggleRecord} aria-label={isRecording ? 'Stop recording' : 'Start camera'}>{isRecording ? '■' : '●'}</button>
+            <div className="capture-tools">
+              <button aria-label="Filters" onClick={() => notify('Filters are coming soon.')}>✧</button>
+              <button aria-label="Timer" onClick={() => notify('Timer is coming soon.')}>◷</button>
+            </div>
+            <div className="capture-bottom">
+              <label style={{ cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                <input type="file" accept="video/mp4,video/webm,video/quicktime,video/x-m4v" hidden onChange={(event) => selectUpload(event.target.files?.[0])} />
+                ▧ Upload clip
+              </label>
+              <button className="record" onClick={toggleRecord} aria-label={isRecording ? 'Stop recording' : 'Record'} />
+              <button onClick={() => setSoundsOpen(true)}>♫ Sound</button>
+            </div>
+          </div>
+          <div className="form-panel">
+            <h2>Clip setup</h2>
+            <label className="field">Recording length<select><option>30 seconds</option><option>60 seconds</option><option>3 minutes</option></select></label>
+            <label className="field">Sound<select value={selectedSound.title} onChange={(event) => setSelectedSound(sounds.find((sound) => sound.title === event.target.value) ?? sounds[0])}>
+              {sounds.map((sound) => <option key={sound.id}>{sound.title}</option>)}
+            </select></label>
+            <label className="field">Cover frame<button className="secondary-button" type="button" onClick={() => notify('Cover selection is a preview-only control.')}>Choose cover</button></label>
+            <div className="switch-row"><span>Enhance video</span><button className="switch" aria-label="Enhance video enabled" /></div>
+            <div className="switch-row"><span>Save to drafts automatically</span><button className="switch" aria-label="Auto save enabled" /></div>
+            <div className="button-row"><button className="secondary-button" onClick={() => notify('Draft saved locally.')}>Save draft</button><button className="primary-button" onClick={() => (capturedUrl ? navigate('post') : notify('Record or upload a clip first.'))}>Next: Post</button></div>
+            <p className="field-help">{capturedName ? `Selected: ${capturedName}` : 'Videos stay local until you publish.'}</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ================= POST ================= */}
+      <section className={`screen${screen === 'post' ? ' active' : ''}`} data-view="post" aria-label="Publish a post">
+        <PageHead
+          title="Post"
+          subtitle="Choose how this video appears to your audience."
+          tools={<button className="secondary-button" onClick={() => navigate('create')}>← Back to edit</button>}
+        />
+        <div className="compose-layout">
+          <div className="capture-preview">
+            {capturedUrl
+              ? <video src={capturedUrl} muted playsInline controls style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }} />
+              : <span className="capture-status">NO VIDEO YET</span>}
+            <span className="capture-status" style={{ top: 13 }}>POST PREVIEW</span>
+            <div className="capture-bottom"><span className="caption">{caption.trim() || 'Your caption will appear here.'}</span></div>
+          </div>
+          <div className="form-panel">
+            <h2>Post details</h2>
+            <label className="field">
+              Caption
+              <textarea maxLength={500} value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Write a caption..." />
+              <span className="field-help">Add a thought, tag a topic, or keep it simple.</span>
+            </label>
+            <label className="field">Who can watch<select><option>Everyone</option><option>Followers</option><option>Only me</option></select></label>
+            <div className="switch-row"><span>Allow comments</span><button className="switch" aria-label="Allow comments enabled" /></div>
+            <div className="switch-row"><span>Allow remix</span><button className="switch" aria-label="Allow remix enabled" /></div>
+            <div className="switch-row"><span>Show on profile</span><button className="switch" aria-label="Show on profile enabled" /></div>
+            <div className="button-row">
+              <button className="secondary-button" onClick={discardCapture}>Discard draft</button>
+              <button className="primary-button" onClick={publishVideo} disabled={uploading}>{uploading ? 'Publishing…' : 'Publish video'}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ================= MESSAGES ================= */}
+      <section className={`screen${screen === 'message' ? ' active' : ''}`} data-view="message" aria-label="Messages">
+        <PageHead title="Messages" subtitle="Notes from your people." tools={<button className="primary-button" onClick={() => notify('Pick a conversation to keep chatting.')}>＋ New message</button>} />
+        <div className="message-layout">
+          <aside className="conversation-list">
+            <div className="message-search"><input placeholder="Search messages" aria-label="Search messages" value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)} /></div>
+            {filteredConversations.map((conversation) => (
+              <button key={conversation.id} className={`conversation${activeConversation.id === conversation.id ? ' active' : ''}`} onClick={() => openConversation(conversation)}>
+                <Avatar initials={conversation.initials} />
+                <span className="conversation-copy"><b>{conversation.name}</b><small>{conversation.preview}</small></span>
+                <time>{conversation.time}</time>
+              </button>
+            ))}
+            {filteredConversations.length === 0 && <p className="panel-note" style={{ padding: 12 }}>No conversations match.</p>}
+          </aside>
+          <section className="chat-pane">
+            <header className="chat-head">
+              <button className="message-back" onClick={() => setScreen('discover')} aria-label="Back to messages">‹</button>
+              <Avatar initials={activeConversation.initials} />
+              <span><b>{activeConversation.name}</b><small>Active now</small></span>
+              <button className="chat-more" aria-label="Conversation options">•••</button>
+            </header>
+            <div className="chat-body">
+              <div className="chat-day">TODAY</div>
+              {bubbles.map((bubble) => <div key={bubble.id} className={`bubble${bubble.mine ? ' mine' : ''}`}>{bubble.text}</div>)}
+            </div>
+            <form className="chat-compose" onSubmit={sendChat}>
+              <input placeholder="Write a message..." aria-label="Write a message" value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} />
+              <button aria-label="Send message">➤</button>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      {/* ================= PROFILE ================= */}
+      <section className={`screen${screen === 'profile' ? ' active' : ''}`} data-view="profile" aria-label="Profile">
+        <PageHead
+          title="Profile"
+          subtitle="Your page, your point of view."
+          tools={<><button className="secondary-button" onClick={() => navigate('settings')}>⚙ Settings</button><button className="primary-button" onClick={beginProfileEdit}>Edit profile</button></>}
+        />
+        <div className="profile-cover">
+          {profile?.banner_url && <img src={profile.banner_url} alt="Profile banner" />}
+          <span className="profile-cover-label">A little more outside time ↗</span>
+        </div>
+        <div className="profile-summary">
+          <span className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt={`${accountName} profile`} /> : accountInitials}</span>
+          <div className="profile-details"><h2>{accountName}</h2><p>{accountHandle} · Portland, OR</p></div>
+          <button className="secondary-button" onClick={() => navigate('studio')}>Open Studio</button>
+        </div>
+        <div className="profile-stats">
+          <span><b>{myClips.length || 38}</b> videos</span>
+          <button className="profile-stat-link" onClick={() => openPeople('followers')}><b>4,820</b> followers</button>
+          <button className="profile-stat-link" onClick={() => openPeople('following')}><b>612</b> following</button>
+          <span><b>82.4K</b> likes</span>
+        </div>
+        <p className="profile-bio">{profile?.bio || 'Collecting small moments, good food, and places with no signal. Here for the things that make an ordinary day feel like yours.'}</p>
+        <div className="profile-tabs">
+          {['Videos', 'Liked', 'Saved', 'Collections'].map((tab, index) => (
+            <button key={tab} className={index === 0 ? 'active' : ''} onClick={() => notify(`${tab} tab selected.`)}>{tab}</button>
+          ))}
+        </div>
+        <div className="profile-grid">
+          {profileGridItems.map((tile, index) => (
+            <button className="profile-tile" key={`${tile.alt}-${index}`} onClick={() => navigate('home')} aria-label={`Play video: ${tile.alt}`}>
+              {'video' in tile && tile.video ? <video src={tile.video} muted playsInline /> : <img src={tile.image} alt={tile.alt} />}
+              <span>▶ {tile.views}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* ================= SETTINGS ================= */}
+      <section className={`screen${screen === 'settings' ? ' active' : ''}`} data-view="settings" aria-label="Settings">
+        <PageHead title="Settings" subtitle="Shape your account and your experience." />
+        <div className="settings-layout">
+          <nav className="settings-nav">
+            {['Account', 'Privacy', 'Notifications', 'Playback', 'Accessibility'].map((section, index) => (
+              <button key={section} className={index === 0 ? 'active' : ''} onClick={() => notify(`${section} settings selected.`)}>{section}</button>
+            ))}
+          </nav>
+          <section className="settings-content">
+            <h2>Account preferences</h2>
+            <p>Manage how you use Arc.</p>
+            {settingsOptions.map((option) => (
+              <div className="setting-item" key={option.key}>
+                <span><b>{option.title}</b><small>{option.detail}</small></span>
+                <input type="checkbox" checked={settingsOn[option.key]} onChange={(event) => setSettingsOn((current) => ({ ...current, [option.key]: event.target.checked }))} />
+              </div>
+            ))}
+            <div className="button-row">
+              {session && <button className="secondary-button" onClick={() => { void supabase?.auth.signOut(); notify('Signed out.'); setScreen('home') }}>Sign out</button>}
+              <button className="primary-button" onClick={() => notify('Settings preview saved locally.')}>Save preferences</button>
+                </div>
+            {!isSupabaseConfigured && <p className="field-help">Sign in needs the app owner to configure Supabase.</p>}
+          </section>
+        </div>
+      </section>
+
+      {/* ================= STUDIO ================= */}
+      <section className={`screen${screen === 'studio' ? ' active' : ''}`} data-view="studio" aria-label="Creator Studio">
+        <PageHead
+          title="Studio"
+          subtitle="Your videos are finding their people."
+          tools={<><button className="secondary-button">Last 30 days⌄</button><button className="primary-button" onClick={startCamera}>＋ New video</button></>}
+        />
+        <div className="studio-metrics">
+          <div className="metric-card"><small>Video views</small><strong>128.7K</strong><span>↑ 18.4% this month</span></div>
+          <div className="metric-card"><small>Profile visits</small><strong>24.6K</strong><span>↑ 12.1% this month</span></div>
+          <div className="metric-card"><small>New followers</small><strong>3,248</strong><span>↑ 9.8% this month</span></div>
+          <div className="metric-card"><small>Engagement</small><strong>8.6%</strong><span>↑ 2.3% this month</span></div>
+        </div>
+        <div className="studio-grid">
+          <section className="studio-panel">
+            <h2>Views over time</h2>
+            <div className="chart-bars">{chartBars.map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div>
+            <div className="chart-labels"><span>Nov 1</span><span>Nov 7</span><span>Nov 14</span><span>Nov 21</span><span>Nov 30</span></div>
+          </section>
+          <section className="studio-panel">
+            <h2>Top videos</h2>
+            {topVideos.map((video) => (
+              <div className="top-video" key={video.title}>
+                <img src={video.image} alt={`${video.title} thumbnail`} />
+                <span><b>{video.title}</b><small>{video.when}</small></span>
+                <strong>{video.views}</strong>
+              </div>
+            ))}
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  {/* ---------- Comments modal ---------- */ }
+  <Modal open={commentsOpen} onClose={() => setCommentsOpen(false)} labelledBy="comments-title" className="comments-card">
+    <ModalHead title="Comments" subtitle="6,432 responses" onClose={() => setCommentsOpen(false)} />
+    <div className="comment-list">
+      {commentList.map((comment) => (
+        <div className="comment-row" key={comment.id}>
+          <Avatar initials={comment.initials} />
+          <div>
+            <b>{comment.author} <small>{comment.time}</small></b>
+            <p>{comment.text}</p>
+            <button className="comment-like" onClick={() => setLikedComments((current) => ({ ...current, [comment.id]: !current[comment.id] }))}>
+              {likedComments[comment.id] ? '♥' : '♡'} {comment.likes + (likedComments[comment.id] ? 1 : 0)}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+    <form className="comment-compose" onSubmit={submitComment}>
+      <Avatar initials={accountInitials} size={30} />
+      <input placeholder="Add a thoughtful comment..." aria-label="Add a comment" value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} />
+      <button className="primary-button">Post</button>
+    </form>
+  </Modal>
+
+  {/* ---------- Story viewer ---------- */ }
+  <div className={`story-overlay${storyOpen ? ' open' : ''}`} aria-hidden={!storyOpen}>
+    <section className="story-viewer" role="dialog" aria-modal="true" aria-label="Story viewer">
+      <img src={currentStory.image} alt={`${currentStory.name} story`} />
+      <div className="story-scrim" />
+      <div className="story-progress">{stories.map((story, index) => <i key={story.id} className={index <= storyIndex ? 'on' : ''} />)}</div>
+      <header className="story-view-head">
+        <button className="story-view-back" onClick={() => setStoryOpen(false)} aria-label="Close story">‹</button>
+        <Avatar initials={currentStory.initials} />
+        <span><b>{currentStory.name}</b><small>{currentStory.time}</small></span>
+        <button className="story-view-close" onClick={() => setStoryOpen(false)} aria-label="Close story">×</button>
+      </header>
+      <button className="story-skip story-prev" onClick={() => moveStory(-1)} aria-label="Previous story">‹</button>
+      <button className="story-skip story-next" onClick={() => moveStory(1)} aria-label="Next story">›</button>
+      <div className="story-view-caption">{currentStory.caption}</div>
+      <form className="story-reply" onSubmit={submitStoryReply}>
+        <input placeholder="Reply to story..." aria-label="Reply to story" value={storyReply} onChange={(event) => setStoryReply(event.target.value)} />
+        <button aria-label="Send reply">➤</button>
+      </form>
+    </section>
+  </div>
+
+  {/* ---------- Profile editor ---------- */ }
+  <Modal open={profileOpen} onClose={() => setProfileOpen(false)} labelledBy="edit-profile-title" className="profile-modal-card">
+    <ModalHead title="Edit profile" subtitle="Make your page feel like you." onClose={() => setProfileOpen(false)} />
+    <form className="profile-edit-form" onSubmit={saveProfile}>
+      <label className="field">Display name<input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={60} required /></label>
+      <label className="field">Username
+        <div className="handle-field"><span>@</span><input value={editUsername} onChange={(event) => setEditUsername(event.target.value)} maxLength={24} required /></div>
+      </label>
+      <label className="field">Bio<textarea value={editBio} onChange={(event) => setEditBio(event.target.value)} maxLength={160} rows={4} /></label>
+      <button className="secondary-button cover-edit" type="button" onClick={() => notify('Cover photo selection is a preview-only control.')}>Change cover photo</button>
+      <footer className="button-row">
+        <button className="secondary-button" type="button" onClick={() => setProfileOpen(false)}>Cancel</button>
+        <button className="primary-button" type="submit" disabled={profileBusy}>{profileBusy ? 'Saving…' : 'Save profile'}</button>
+      </footer>
+    </form>
+  </Modal>
+
+  {/* ---------- People modal ---------- */ }
+  <Modal open={peopleOpen} onClose={() => setPeopleOpen(false)} labelledBy="people-title" className="people-card">
+    <ModalHead title={peopleGroup === 'followers' ? 'Followers' : 'Following'} onClose={() => setPeopleOpen(false)} />
+    <div className="people-list">
+      {(peopleGroup === 'followers' ? peopleFollowers : peopleFollowing).map((person) => {
+        const state = personFollowState[person.name] ?? (peopleGroup === 'followers' ? 'Follow back' : 'Following')
+        return (
+          <button className="people-row" key={person.name} onClick={() => setPersonFollowState((current) => ({ ...current, [person.name]: state === 'Following' ? 'Follow' : 'Following' }))}>
+            <Avatar initials={person.initials} />
+            <span><b>{person.name}</b><small>{person.meta}</small></span>
+            <span className="people-follow-state">{state}</span>
+          </button>
+        )
+      })}
+    </div>
+  </Modal>
+
+  {/* ---------- Live viewer ---------- */ }
+  <div className={`live-overlay${liveOpen ? ' open' : ''}`} aria-hidden={!liveOpen}>
+    <section className="live-viewer" role="dialog" aria-modal="true" aria-label="Live preview">
+      <img src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=85" alt="Coastal live stream preview" />
+      <div className="live-shade" />
+      <header className="live-view-head">
+        <span className="live-badge">● LIVE</span>
+        <Avatar initials="AR" />
+        <span><b>Ari Rivera</b><small>2.4K watching</small></span>
+        <button className="modal-close" onClick={() => setLiveOpen(false)} aria-label="Close live preview">×</button>
+      </header>
+      <div className="live-chat">{liveChat.map((message) => <p key={message.id}><b>{message.name}</b> {message.text}</p>)}</div>
+      <form className="live-compose" onSubmit={submitLiveChat}>
+        <input placeholder="Say something..." aria-label="Send a live comment" value={liveDraft} onChange={(event) => setLiveDraft(event.target.value)} />
+        <button aria-label="Send">➤</button>
+        <button type="button" className="live-heart" onClick={() => setLiveHeart((value) => !value)}>{liveHeart ? '♥' : '♡'}</button>
+      </form>
+    </section>
+  </div>
+
+  {/* ---------- Sounds modal ---------- */ }
+  <Modal open={soundsOpen} onClose={() => setSoundsOpen(false)} labelledBy="sounds-title" className="sounds-card">
+    <ModalHead title="Sounds" subtitle="Explore sounds used by the community" onClose={() => setSoundsOpen(false)} />
+    <label className="sound-search">⌕<input placeholder="Search sounds" aria-label="Search sounds" value={soundQuery} onChange={(event) => setSoundQuery(event.target.value)} /></label>
+    <div className="sound-list">
+      {filteredSounds.map((sound) => (
+        <button className={`sound-row${selectedSound.id === sound.id ? ' selected' : ''}`} key={sound.id} onClick={() => setSelectedSound(sound)}>
+          <span className="sound-cover">♫</span>
+          <span><b>{sound.title}</b><small>{sound.artist} · {sound.usage}</small></span>
+          <span className="sound-preview-button">{selectedSound.id === sound.id ? 'Ⅱ Previewing' : '▶ Preview'}</span>
+        </button>
+      ))}
+      {filteredSounds.length === 0 && <p className="panel-note">No sounds match that search.</p>}
+    </div>
+    <footer className="sound-footer">
+      <button className="primary-button" onClick={() => { setSoundsOpen(false); notify(`${selectedSound.title} selected for your next video.`) }}>Use this sound</button>
+    </footer>
+  </Modal>
+
+  {/* ---------- Mobile nav ---------- */ }
+      <nav className="mobile-nav" aria-label="Mobile navigation">
+        {NAV_MOBILE.map((item) => (
+          <button key={item.id} className={`${screen === item.id ? 'active' : ''}${item.create ? ' create-mobile' : ''}`} onClick={() => (item.create ? startCamera() : navigate(item.id))}>
+            <span className="nav-icon">{item.icon}</span>{item.label}
+          </button>
+        ))}
+      </nav>
+
+      <Toast message={toastMessage} />
+    </div >
   )
 }
-
-export default App
