@@ -3,12 +3,9 @@ import type { Session } from '@supabase/supabase-js'
 import {
   ArrowDownToLine,
   ArrowLeft,
-  Bookmark,
   Check,
-  ChevronDown,
   CircleHelp,
   Compass,
-  Heart,
   Home,
   ImagePlus,
   LogOut,
@@ -20,18 +17,14 @@ import {
   Search,
   Send,
   Settings2,
-  Share2,
   Sparkles,
   UserRound,
   Video,
-  Volume2,
-  VolumeX,
   X,
 } from 'lucide-react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 type Screen = 'feed' | 'profile' | 'create' | 'discover' | 'inbox'
-type FeedTab = 'For You' | 'Following' | 'Nearby'
 type Profile = { username: string; display_name: string; bio: string; avatar_url: string | null; banner_url: string | null }
 type Clip = {
   creator: string
@@ -122,12 +115,8 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false)
   const [authFeedback, setAuthFeedback] = useState('')
   const [authError, setAuthError] = useState('')
-  const [feedTab, setFeedTab] = useState<FeedTab>('For You')
   const [clips, setClips] = useState(starterClips)
-  const [clipIndex, setClipIndex] = useState(0)
-  const [liked, setLiked] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [videoMuted, setVideoMuted] = useState(true)
+  const [, setClipIndex] = useState(0)
   const [following, setFollowing] = useState(false)
   const [duration, setDuration] = useState('30s')
   const [isRecording, setIsRecording] = useState(false)
@@ -148,8 +137,6 @@ function App() {
   const publishedPreviewUrlsRef = useRef(new Set<string>())
   const recordingTimeoutRef = useRef<number | null>(null)
   const recordingStartedAtRef = useRef(0)
-
-  const clip = clips[clipIndex]
 
   useEffect(() => {
     if (screen !== 'create') return
@@ -234,12 +221,6 @@ function App() {
       active = false
     }
   }, [session])
-
-  function changeClip(direction: number) {
-    setClipIndex((current) => (current + direction + clips.length) % clips.length)
-    setLiked(false)
-    setSaved(false)
-  }
 
   function openScreen(nextScreen: Screen) {
     setScreen(nextScreen)
@@ -595,59 +576,99 @@ function App() {
       <div className={`app-device screen-${screen}`}>
         <DesktopSidebar screen={screen} onNavigate={openScreen} accountName={session ? accountName : ''} />
         {screen === 'feed' && (
-          <section className="feed-screen" aria-label="Video feed">
-            <header className="feed-header">
-              <button className="wordmark" onClick={() => openScreen('feed')} aria-label="Arc home">Arc<span>.</span></button>
-              <button className="header-icon" aria-label="Search videos" onClick={() => openScreen('discover')}><Search size={20} /></button>
+          <section className="feed-screen artifact-screen" aria-label="Artifact preview">
+            <header className="artifact-header">
+              <div className="artifact-title-wrap">
+                <span className="artifact-icon">⌂</span>
+                <span className="artifact-title">Visual: Short-Video App UI</span>
+              </div>
+              <div className="artifact-actions">
+                <button className="artifact-mini action-light" aria-label="Open in editor">E</button>
+                <button className="artifact-mini" aria-label="View preview">◌</button>
+                <button className="artifact-mini" aria-label="Chat">◔</button>
+                <button className="artifact-mini" aria-label="More actions">⋯</button>
+              </div>
             </header>
-            <div className="feed-tabs" role="tablist" aria-label="Choose video feed">
-              {(['For You', 'Following', 'Nearby'] as FeedTab[]).map((tab) => (
-                <button key={tab} role="tab" aria-selected={feedTab === tab} className={feedTab === tab ? 'feed-tab selected' : 'feed-tab'} onClick={() => setFeedTab(tab)}>{tab}</button>
-              ))}
+
+            <div className="artifact-toolbar" aria-label="Artifact controls">
+              <button className="artifact-tool active">Page 1</button>
+              <button className="artifact-tool"><span>✎</span></button>
+              <button className="artifact-tool"><span>◌</span></button>
+              <button className="artifact-tool"><span>#</span></button>
+              <button className="artifact-tool"><span>⌂</span></button>
+              <button className="artifact-tool"><span>◔</span></button>
+              <button className="artifact-tool"><span>◍</span></button>
+              <button className="artifact-tool"><span>⌁</span></button>
             </div>
 
-            <div className="desktop-feed-layout">
-            <article className="clip-card" key={clipIndex} aria-label={`Video by ${clip.creator}`}>
-              {clip.videoSrc ? <video src={clip.videoSrc} className="clip-image" autoPlay loop playsInline muted={videoMuted} /> : <img src={clip.image} alt={clip.imageAlt} className="clip-image" />}
-              <div className="clip-tint" />
-              <div className="clip-topline"><span className="clip-live"><span /> PLAYING</span><button aria-label="Video options" className="clip-more"><MoreHorizontal size={19} /></button></div>
-              <button className="clip-next clip-next-up" onClick={() => changeClip(-1)} aria-label="Previous video"><ChevronDown size={18} /></button>
-              <button className="clip-next clip-next-down" onClick={() => changeClip(1)} aria-label="Next video"><ChevronDown size={18} /></button>
-
-              <div className="clip-actions" aria-label="Video actions">
-                <button className={liked ? 'clip-action active like-action' : 'clip-action like-action'} onClick={() => setLiked((value) => !value)} aria-label={liked ? 'Unlike video' : 'Like video'}><Heart size={25} fill={liked ? 'currentColor' : 'none'} /><span>{formatCount(clip.likes + (liked ? 1 : 0))}</span></button>
-                <button className="clip-action" onClick={() => setCameraMessage('Comments are ready to join the conversation.')} aria-label={`${clip.comments} comments`}><MessageCircle size={24} /><span>{formatCount(clip.comments)}</span></button>
-                <button className="clip-action" onClick={() => setCameraMessage('Share link copied.')} aria-label="Share video"><Share2 size={23} /><span>Share</span></button>
-                <button className={saved ? 'clip-action active' : 'clip-action'} onClick={() => setSaved((value) => !value)} aria-label={saved ? 'Remove saved video' : 'Save video'}><Bookmark size={22} fill={saved ? 'currentColor' : 'none'} /><span>{saved ? 'Saved' : 'Save'}</span></button>
-                {clip.videoSrc && <button className="clip-action sound-action" onClick={() => setVideoMuted((value) => !value)} aria-label={videoMuted ? 'Turn video sound on' : 'Mute video'}>{videoMuted ? <VolumeX size={21} /> : <Volume2 size={21} />}<span>{videoMuted ? 'Sound off' : 'Sound on'}</span></button>}
-              </div>
-
-              <div className="clip-caption">
-                <div className="creator-line">
-                  <button className={`creator-avatar avatar-${clip.color}`} onClick={() => openScreen('profile')} aria-label={`View ${clip.creator}'s profile`}>{clip.initials}</button>
-                  <button className="creator-identity" onClick={() => openScreen('profile')}><strong>{clip.creator}</strong><span>{clip.handle}</span></button>
-                  <button className={following ? 'follow-pill is-following' : 'follow-pill'} onClick={() => setFollowing((value) => !value)}>{following ? <Check size={14} /> : 'Follow'}</button>
+            <div className="artifact-canvas">
+              <div className="artifact-column artifact-card-column">
+                <div className="artifact-card-label">Home</div>
+                <div className="artifact-mobile-preview">
+                  <div className="mobile-frame">
+                    <div className="mobile-header">
+                      <span className="brand-mark">V</span>
+                      <span className="brand-name">Visual</span>
+                      <div className="header-icons"><span>◌</span><span>◍</span><span>＋</span></div>
+                    </div>
+                    <div className="mobile-nav">
+                      <span className="nav-item selected">Home</span>
+                      <span className="nav-item">Profile</span>
+                      <span className="nav-item">Create</span>
+                      <span className="nav-item">Post</span>
+                    </div>
+                    <div className="mobile-content">
+                      <div className="mini-chart-header">
+                        <span className="mini-dot" />
+                        <span>Trending</span>
+                      </div>
+                      <div className="chart-bars">
+                        <span style={{ height: '48%' }} />
+                        <span style={{ height: '63%' }} />
+                        <span style={{ height: '80%' }} />
+                        <span style={{ height: '56%' }} />
+                        <span style={{ height: '90%' }} />
+                        <span style={{ height: '70%' }} />
+                        <span style={{ height: '87%' }} />
+                        <span style={{ height: '62%' }} />
+                      </div>
+                      <div className="mini-metrics">
+                        <div><span>18.7K</span></div>
+                        <div><span>15.4K</span></div>
+                        <div><span>9.8K</span></div>
+                      </div>
+                    </div>
+                    <div className="mobile-footer">
+                      <button>Discover</button>
+                      <button>Profile</button>
+                    </div>
+                  </div>
                 </div>
-                <p>{clip.caption}</p>
-                <div className="clip-audio"><Music2 size={13} /><span>{clip.audio}</span></div>
               </div>
-              <div className="video-progress"><span style={{ width: `${28 + clipIndex * 17}%` }} /></div>
-            </article>
-            <aside className="desktop-context" aria-label="Video details">
-              <span className="context-kicker">ON YOUR FEED</span>
-              <h2>One good thing<br />leads to <em>another.</em></h2>
-              <div className="context-creator"><span className={`context-avatar avatar-${clip.color}`}>{clip.initials}</span><span><strong>{clip.creator}</strong><small>{clip.handle}</small></span><button onClick={() => setFollowing((value) => !value)}>{following ? 'Following' : 'Follow'}</button></div>
-              <p className="context-caption">{clip.caption}</p>
-              <div className="context-audio"><Music2 size={14} />{clip.audio}</div>
-              <div className="context-divider" />
-              <span className="context-kicker">YOUR NEXT RABBIT HOLE</span>
-              <button className="context-topic" onClick={() => setFeedTab('Nearby')}><span className="topic-swatch topic-blue" /><span><strong>Out there, lately</strong><small>Little discoveries from the world around us</small></span><ChevronDown size={16} /></button>
-              <button className="context-topic" onClick={() => setFeedTab('Following')}><span className="topic-swatch topic-coral" /><span><strong>Made by hand</strong><small>People making things their own way</small></span><ChevronDown size={16} /></button>
-              <div className="context-footnote"><Sparkles size={14} /><span>Less noise. More things worth your time.</span></div>
-            </aside>
+
+              <div className="artifact-column artifact-card-column">
+                <div className="artifact-card-label">Profile</div>
+                <div className="artifact-empty-card" />
+              </div>
+
+              <div className="artifact-column artifact-card-column">
+                <div className="artifact-card-label">Create</div>
+                <div className="artifact-empty-card" />
+              </div>
+
+              <div className="artifact-column artifact-card-column">
+                <div className="artifact-card-label">Post</div>
+                <div className="artifact-empty-card" />
+              </div>
+
+              <div className="artifact-column artifact-studio-column">
+                <div className="artifact-studio-header">
+                  <span>Studio</span>
+                  <span className="studio-menu">⤴</span>
+                </div>
+                <div className="artifact-studio-preview" />
+              </div>
             </div>
-            {cameraMessage && <div className="inline-message" role="status">{cameraMessage}<button onClick={() => setCameraMessage('')} aria-label="Dismiss"><X size={14} /></button></div>}
-            <BottomNav screen={screen} onNavigate={openScreen} />
           </section>
         )}
 
