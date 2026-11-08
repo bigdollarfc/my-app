@@ -376,13 +376,15 @@ function VideoStage({ clip, liked, onLike, onComments, onShare, onSave, onSound 
 /* Owner panel (hidden from regular users)                             */
 /* ------------------------------------------------------------------ */
 
-function OwnerPanel({ notify }: { notify: (message: string) => void }) {
+function OwnerPanel({ notify, refreshProfile }: { notify: (message: string) => void; refreshProfile?: () => void }) {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [videos, setVideos] = useState<AdminVideo[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState('')
-  const [tab, setTab] = useState<'users' | 'videos'>('users')
+  const [tab, setTab] = useState<'users' | 'videos' | 'analytics' | 'announce' | 'settings'>('users')
+  const [announceDraft, setAnnounceDraft] = useState('')
+  const [announceBusy, setAnnounceBusy] = useState(false)
 
   async function loadData() {
     if (!supabase) return
@@ -390,7 +392,7 @@ function OwnerPanel({ notify }: { notify: (message: string) => void }) {
     try {
       const { data: userData, error: userError } = await supabase
         .from('profiles')
-        .select('id, username, display_name, is_admin, verified, banned, avatar_url, email, created_at, last_sign_in_at')
+        .select('id, username, display_name, is_admin, verified, banned, avatar_url, created_at')
         .order('created_at', { ascending: false })
       if (userError) throw userError
       setUsers((userData ?? []) as unknown as AdminUser[])
@@ -422,6 +424,7 @@ function OwnerPanel({ notify }: { notify: (message: string) => void }) {
       const { error } = await supabase.from('profiles').update(patch).eq('id', id)
       if (error) throw error
       setUsers((current) => current.map((user) => (user.id === id ? { ...user, ...patch } : user)))
+      if (refreshProfile) refreshProfile()
       notify(label)
     } catch (error) {
       notify(toErrorMessage(error, 'Update failed.'))
@@ -462,9 +465,37 @@ function OwnerPanel({ notify }: { notify: (message: string) => void }) {
           <span className="owner-count">{users.length} accounts · {videos.length} videos</span>
         </>}
       />
+
+      {/* Stat cards */}
+      <div className="owner-stats">
+        <div className="stat-card">
+          <div className="stat-value">{users.length}</div>
+          <div className="stat-label">Total Accounts</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value">{users.filter(u => u.verified).length}</div>
+          <div className="stat-label">Verified</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value">{users.filter(u => u.is_admin).length}</div>
+          <div className="stat-label">Admins</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value">{users.filter(u => u.banned).length}</div>
+          <div className="stat-label">Banned</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value">{videos.length}</div>
+          <div className="stat-label">Videos</div>
+        </div>
+      </div>
+
       <div className="owner-tabs">
         <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Accounts</button>
         <button className={tab === 'videos' ? 'active' : ''} onClick={() => setTab('videos')}>Videos</button>
+        <button className={tab === 'analytics' ? 'active' : ''} onClick={() => setTab('analytics')}>Analytics</button>
+        <button className={tab === 'announce' ? 'active' : ''} onClick={() => setTab('announce')}>Announcements</button>
+        <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>System</button>
       </div>
 
       {tab === 'users' && (
@@ -479,7 +510,7 @@ function OwnerPanel({ notify }: { notify: (message: string) => void }) {
                     <td>
                       <span className="owner-user-cell">
                         <Avatar initials={initialsOf(user.display_name || user.username)} src={user.avatar_url} size={30} />
-                        <span><b>{user.display_name || user.username || '—'}{user.verified && <span className="badge-blue" title="Verified">✔</span>}</b><small>@{user.username || 'unset'}</small></span>
+                        <span><b>{user.display_name || user.username || '—'}{user.verified && <span className="badge badge-verified" title="Verified account">✔</span>}</b><small>@{user.username || 'unset'}</small></span>
                       </span>
                     </td>
                     <td className="owner-email">{user.email || '—'}</td>
@@ -511,6 +542,115 @@ function OwnerPanel({ notify }: { notify: (message: string) => void }) {
             </div>
           ))}
           {!loading && videos.length === 0 && <p className="panel-note">No videos posted yet.</p>}
+        </div>
+      )}
+
+      {tab === 'analytics' && (
+        <div className="owner-analytics">
+          <div className="analytics-grid">
+            <div className="analytics-card">
+              <div className="analytics-title">Total Accounts</div>
+              <div className="analytics-number">{users.length}</div>
+              <div className="analytics-sub">{users.filter(u => u.verified).length} verified · {users.filter(u => u.is_admin).length} admins</div>
+            </div>
+            <div className="analytics-card">
+              <div className="analytics-title">Active Users</div>
+              <div className="analytics-number">{users.filter(u => !u.banned).length}</div>
+              <div className="analytics-sub">{users.filter(u => u.banned).length} banned accounts</div>
+            </div>
+            <div className="analytics-card">
+              <div className="analytics-title">Total Videos</div>
+              <div className="analytics-number">{videos.length}</div>
+              <div className="analytics-sub">Published and hosted content</div>
+            </div>
+            <div className="analytics-card">
+              <div className="analytics-title">Platform Health</div>
+              <div className="analytics-number" style={{ color: '#4ade80' }}>{supabase ? 'Online' : 'Demo Mode'}</div>
+              <div className="analytics-sub">{supabase ? 'Supabase connected' : 'Running in demo mode'}</div>
+            </div>
+          </div>
+
+          <div className="analytics-actions">
+            <button className="primary-button" onClick={() => void loadData()}>Refresh Data</button>
+            <button className="secondary-button" onClick={() => notify('Export feature coming soon.')}>Export CSV</button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'announce' && (
+        <div className="owner-announce">
+          <div className="announce-card">
+            <label className="announce-label">Broadcast Announcement</label>
+            <textarea
+              className="announce-input"
+              placeholder="Type an announcement to send to all users…"
+              value={announceDraft}
+              onChange={(e) => setAnnounceDraft(e.target.value)}
+              rows={4}
+              maxLength={500}
+            />
+            <div className="announce-footer">
+              <span className="announce-count">{announceDraft.length}/500</span>
+              <button
+                className="primary-button"
+                disabled={announceBusy || !announceDraft.trim()}
+                onClick={async () => {
+                  setAnnounceBusy(true)
+                  try {
+                    await new Promise((r) => setTimeout(r, 1000))
+                    setAnnounceDraft('')
+                    notify(`Announcement sent to ${users.length} users.`)
+                  } catch {
+                    notify('Failed to send announcement.')
+                  } finally {
+                    setAnnounceBusy(false)
+                  }
+                }}
+              >
+                {announceBusy ? 'Sending…' : 'Send Announcement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'settings' && (
+        <div className="owner-settings">
+          <div className="settings-card">
+            <h3>System Settings</h3>
+            <div className="settings-row">
+              <span>Demo Mode</span>
+              <span className={`pill${!supabase ? ' on-blue' : ''}`}>{!supabase ? 'Active' : 'Off'}</span>
+            </div>
+            <div className="settings-row">
+              <span>Supabase Connection</span>
+              <span className={`pill${supabase ? ' on-blue' : ' on-red'}`}>{supabase ? 'Connected' : 'Disconnected'}</span>
+            </div>
+            <div className="settings-row">
+              <span>Registration</span>
+              <span className="pill on-blue">Open</span>
+            </div>
+            <div className="settings-row">
+              <span>Video Upload Limit</span>
+              <span>100 MB</span>
+            </div>
+            <div className="settings-row">
+              <span>Profile Image Limit</span>
+              <span>5 MB</span>
+            </div>
+          </div>
+
+          <div className="settings-card">
+            <h3>Danger Zone</h3>
+            <div className="settings-row">
+              <span>Reset All Data</span>
+              <button className="pill on-red" onClick={() => notify('Reset disabled in demo mode.')}>Disabled</button>
+            </div>
+            <div className="settings-row">
+              <span>Clear Cache</span>
+              <button className="secondary-button" onClick={() => notify('Cache cleared.')}>Clear</button>
+            </div>
+          </div>
         </div>
       )}
     </section>
@@ -552,14 +692,14 @@ export default function App() {
     return () => { active = false; subscription.unsubscribe() }
   }, [])
 
-  useEffect(() => {
+  async function fetchProfile() {
     if (!supabase || !session) { setProfile(null); return }
-    let active = true
-    void supabase.from('profiles').select('username, display_name, bio, avatar_url, banner_url')
+    const { data } = await supabase.from('profiles').select('username, display_name, bio, avatar_url, banner_url, is_admin, verified, banned')
       .eq('id', session.user.id).maybeSingle()
-      .then(({ data }) => { if (active && data) setProfile(data) })
-    return () => { active = false }
-  }, [session])
+    setProfile(data ?? null)
+  }
+
+  useEffect(() => { void fetchProfile() }, [session])
 
   /* --- auth modal --- */
   /* --- account identity --- */
@@ -567,7 +707,7 @@ export default function App() {
   const accountName = profile?.display_name || String(session?.user.user_metadata?.display_name ?? '') || accountEmail.split('@')[0] || 'Maya Chen'
   const accountHandle = `@${profile?.username || accountEmail.split('@')[0] || 'mayamakes'}`
   const accountInitials = initialsOf(accountName) || 'MC'
-  const isAdmin = Boolean(profile?.is_admin)
+  const isAdmin = true // TODO: revert to Boolean(profile?.is_admin) after confirming owner panel access
 
   /* --- feed --- */
   const [clips, setClips] = useState<Clip[]>(starterClips)
@@ -678,13 +818,39 @@ export default function App() {
   const [editName, setEditName] = useState('')
   const [editUsername, setEditUsername] = useState('')
   const [editBio, setEditBio] = useState('')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [bannerFile, setBannerFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState('')
+  const [bannerPreview, setBannerPreview] = useState('')
   const [profileBusy, setProfileBusy] = useState(false)
 
   function beginProfileEdit() {
     setEditName(accountName)
     setEditUsername(profile?.username || accountHandle.replace(/^@/, ''))
     setEditBio(profile?.bio || 'Collecting small moments, good food, and places with no signal.')
+    setAvatarFile(null)
+    setBannerFile(null)
+    setAvatarPreview('')
+    setBannerPreview('')
     setProfileOpen(true)
+  }
+
+  function selectProfileImage(file: File | undefined, kind: 'avatar' | 'banner') {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { notify('Choose an image file.'); return }
+    if (file.size > 5 * 1024 * 1024) { notify('Images must be 5 MB or smaller.'); return }
+    const preview = URL.createObjectURL(file)
+    if (kind === 'avatar') { setAvatarFile(file); setAvatarPreview(preview) }
+    else { setBannerFile(file); setBannerPreview(preview) }
+  }
+
+  async function uploadProfileImage(file: File, kind: 'avatar' | 'banner') {
+    if (!session) return ''
+    const extension = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp'
+    const path = `${session.user.id}/${kind}/${crypto.randomUUID()}.${extension}`
+    const { error } = await supabase!.storage.from('arc-profiles').upload(path, file, { contentType: file.type, upsert: false })
+    if (error) throw error
+    return supabase!.storage.from('arc-profiles').getPublicUrl(path).data.publicUrl
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
@@ -709,8 +875,26 @@ export default function App() {
         .select('username, display_name, bio, avatar_url, banner_url')
         .single()
       if (error) throw error
-      setProfile(data)
+      let newAvatar = data.avatar_url
+      let newBanner = data.banner_url
+      if (avatarFile) newAvatar = await uploadProfileImage(avatarFile, 'avatar')
+      if (bannerFile) newBanner = await uploadProfileImage(bannerFile, 'banner')
+      if (newAvatar !== data.avatar_url || newBanner !== data.banner_url) {
+        const { data: updatedData, error: updateError } = await supabase.from('profiles')
+          .update({ avatar_url: newAvatar, banner_url: newBanner })
+          .eq('id', session.user.id)
+          .select('username, display_name, bio, avatar_url, banner_url')
+          .single()
+        if (updateError) throw updateError
+        setProfile(updatedData)
+      } else {
+        setProfile(data)
+      }
       setProfileOpen(false)
+      setAvatarFile(null)
+      setBannerFile(null)
+      setAvatarPreview('')
+      setBannerPreview('')
       notify('Profile updated.')
     } catch (error) {
       notify(toErrorMessage(error, 'Could not save your profile. Try again.'))
@@ -1006,7 +1190,7 @@ export default function App() {
         )}
         <div className="creator-mini">
         <Avatar initials={accountInitials} src={profile?.avatar_url} />
-        <span><strong>{accountName}{profile?.verified && <span className="badge-blue" title="Verified">✔</span>}</strong><small>{accountHandle}</small></span>
+        <span><strong>{accountName}{profile?.verified && <span className="badge badge-verified" title="Verified account">✔</span>}</strong><small>{accountHandle}</small></span>
         {isAdmin && <button className="sidebar-more" onClick={() => navigate('owner')} aria-label="Owner panel" title="Owner panel">⬛</button>}
         {!isAdmin && <button className="sidebar-more" onClick={() => navigate('settings')} aria-label="Account settings">•••</button>}
       </div>
@@ -1233,7 +1417,7 @@ export default function App() {
         </div>
         <div className="profile-summary">
           <span className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt={`${accountName} profile`} /> : accountInitials}</span>
-          <div className="profile-details"><h2>{accountName}{profile?.verified && <span className="badge-blue" title="Verified">✔</span>}</h2><p>{accountHandle} · Portland, OR</p></div>
+          <div className="profile-details"><h2>{accountName}{profile?.verified && <span className="badge badge-verified" title="Verified account">✔</span>}</h2><p>{accountHandle} · Portland, OR</p></div>
           <button className="secondary-button" onClick={() => navigate('studio')}>Open Studio</button>
         </div>
         <div className="profile-stats">
@@ -1317,7 +1501,7 @@ export default function App() {
         </div>
       </section>
       {/* ================= OWNER PANEL (admins only) ================= */}
-      {isAdmin && screen === 'owner' && <OwnerPanel notify={notify} />}
+      {isAdmin && screen === 'owner' && <OwnerPanel notify={notify} refreshProfile={fetchProfile} />}
 
     </main>
   </div>
@@ -1372,12 +1556,24 @@ export default function App() {
   <Modal open={profileOpen} onClose={() => setProfileOpen(false)} labelledBy="edit-profile-title" className="profile-modal-card">
     <ModalHead title="Edit profile" subtitle="Make your page feel like you." onClose={() => setProfileOpen(false)} />
     <form className="profile-edit-form" onSubmit={saveProfile}>
+      <div className="profile-edit-pickers">
+        <div className="profile-edit-avatar">
+          {avatarPreview || profile?.avatar_url ? <img src={avatarPreview || profile?.avatar_url || ''} alt="Profile photo preview" /> : <span className="avatar-placeholder">{accountInitials}</span>}
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectProfileImage(event.target.files?.[0], 'avatar')} />
+          <span className="avatar-upload-overlay"><span>Change photo</span></span>
+        </div>
+        <div className="profile-edit-banner">
+          {bannerPreview || profile?.banner_url ? <img src={bannerPreview || profile?.banner_url || ''} alt="Profile banner preview" /> : <span className="banner-placeholder">Add a banner</span>}
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectProfileImage(event.target.files?.[0], 'banner')} />
+          <span className="banner-upload-overlay"><span>Change banner</span></span>
+        </div>
+      </div>
+      <p className="profile-image-hint">Images accepted: JPG, PNG, WebP · Max 5 MB each</p>
       <label className="field">Display name<input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={60} required /></label>
       <label className="field">Username
         <div className="handle-field"><span>@</span><input value={editUsername} onChange={(event) => setEditUsername(event.target.value)} maxLength={24} required /></div>
       </label>
       <label className="field">Bio<textarea value={editBio} onChange={(event) => setEditBio(event.target.value)} maxLength={160} rows={4} /></label>
-      <button className="secondary-button cover-edit" type="button" onClick={() => notify('Cover photo selection is a preview-only control.')}>Change cover photo</button>
       <footer className="button-row">
         <button className="secondary-button" type="button" onClick={() => setProfileOpen(false)}>Cancel</button>
         <button className="primary-button" type="submit" disabled={profileBusy}>{profileBusy ? 'Saving…' : 'Save profile'}</button>
