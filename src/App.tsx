@@ -89,7 +89,7 @@ const starterClips: Clip[] = [
   {
     id: 'mountain', creator: 'Jonah Lee', handle: '@jonah.lee', initials: 'JL',
     caption: 'Somewhere between the trail and home. Took the long way back, and it was worth every minute.',
-    tags: '#outside #slowdays #weekend', audio: 'original sound · Jonah Lee',
+    tags: '#outside #slowdays #weekend #trail', audio: 'original sound · Jonah Lee',
     likes: 128700, comments: 6432,
     image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1100&q=85',
     imageAlt: 'A mountain lake at golden hour',
@@ -97,7 +97,7 @@ const starterClips: Clip[] = [
   {
     id: 'food', creator: 'Nia Cooks', handle: '@nia.cooks', initials: 'NC',
     caption: 'A little lunch break with whatever was in the fridge. Easy, bright, and really good.',
-    tags: '#homecooking #lunchideas', audio: 'Sunday kitchen · Nia Cooks',
+    tags: '#homecooking #lunchideas #foodtok', audio: 'Sunday kitchen · Nia Cooks',
     likes: 42600, comments: 1208,
     image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=1100&q=80',
     imageAlt: 'A colorful lunch prepared at home',
@@ -105,10 +105,50 @@ const starterClips: Clip[] = [
   {
     id: 'coast', creator: 'Ari Rivera', handle: '@ari.outside', initials: 'AR',
     caption: 'Stayed until the light turned silver. Leaving this here for your next deep breath.',
-    tags: '#coastline #slowdown', audio: 'Coastline · Ari Rivera',
+    tags: '#coastline #slowdown #oceanvibes', audio: 'Coastline · Ari Rivera',
     likes: 18300, comments: 920,
     image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1100&q=85',
     imageAlt: 'A quiet blue coastline at sunset',
+  },
+  {
+    id: 'coffee', creator: 'Maya Chen', handle: '@mayamakes', initials: 'MC',
+    caption: 'First sip of morning light. Testing out the new roast from down the street ☕',
+    tags: '#coffee #morningroutine #slowliving #cafe', audio: 'Slow morning · Studio Notes',
+    likes: 31200, comments: 840,
+    image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1100&q=85',
+    imageAlt: 'Fresh coffee pour-over in morning light',
+  },
+  {
+    id: 'studio', creator: 'Kai Tanaka', handle: '@kai.design', initials: 'KT',
+    caption: 'Studio reset before the next print run. Clean space, clear head.',
+    tags: '#design #studio #minimalism #workspace', audio: 'Blue hour · Northbound',
+    likes: 54900, comments: 1530,
+    image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=1100&q=85',
+    imageAlt: 'A sunny creative studio desk',
+  },
+  {
+    id: 'city', creator: 'Sofia Kim', handle: '@sofia.kim', initials: 'SK',
+    caption: 'Blue hour in the city never gets old. Rain-slicked streets and neon reflections.',
+    tags: '#citylights #bluehour #nightwalk #aesthetic', audio: 'Midnight walk · Sofia Kim',
+    likes: 78400, comments: 2980,
+    image: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1100&q=85',
+    imageAlt: 'City lights reflecting on wet night streets',
+  },
+  {
+    id: 'ceramics', creator: 'Leo Vance', handle: '@leovance', initials: 'LV',
+    caption: 'Throwing ceramics on the wheel today. Mesmerizing flow state.',
+    tags: '#craft #ceramics #satisfying #handmade', audio: 'Wheel sounds · Leo Vance',
+    likes: 92100, comments: 3120,
+    image: 'https://images.unsplash.com/photo-1508615070457-7baeba4003ab?auto=format&fit=crop&w=1100&q=85',
+    imageAlt: 'Ceramics and artisan tools on a craft table',
+  },
+  {
+    id: 'scenic', creator: 'Elena Rostova', handle: '@elena.travels', initials: 'ER',
+    caption: 'The road less traveled led us right to this panoramic view.',
+    tags: '#travel #adventure #wanderlust #explore', audio: 'Coastline (instrumental) · Rae Sol',
+    likes: 64700, comments: 1890,
+    image: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1100&q=85',
+    imageAlt: 'Mountain valley scenic drive',
   },
 ]
 
@@ -318,56 +358,206 @@ function AuthModal({ open, mode, busy, onClose, onSubmit, onSwitch }: {
 }
 
 /* ------------------------------------------------------------------ */
-/* Video stage (feed card)                                             */
+/* Video stage (TikTok feed card)                                     */
 /* ------------------------------------------------------------------ */
 
-function VideoStage({ clip, liked, onLike, onComments, onShare, onSave, onSound }: {
+function VideoStage({
+  clip,
+  isActive,
+  isMuted,
+  onToggleMute,
+  liked,
+  onLike,
+  onComments,
+  onShare,
+  onSave,
+  onSound,
+  feedTab,
+  onFeedTabChange,
+}: {
   clip: Clip
+  isActive: boolean
+  isMuted: boolean
+  onToggleMute: () => void
   liked: boolean
   onLike: () => void
   onComments: () => void
   onShare: () => void
   onSave: () => void
   onSound: () => void
+  feedTab: 'following' | 'for-you' | 'live'
+  onFeedTabChange: (tab: 'following' | 'for-you' | 'live') => void
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
   const [paused, setPaused] = useState(false)
+  const [progressPercent, setProgressPercent] = useState(0)
+  const [heartAnim, setHeartAnim] = useState(false)
+  const lastClickRef = useRef(0)
+
+  // Autoplay / pause active video
+  useEffect(() => {
+    if (!videoRef.current || !clip.videoSrc) return
+    if (isActive && !paused) {
+      const p = videoRef.current.play()
+      if (p !== undefined) {
+        p.catch(() => {
+          // Autoplay blocked by browser policy without user gesture
+        })
+      }
+    } else {
+      videoRef.current.pause()
+    }
+  }, [isActive, paused, clip.videoSrc])
+
+  // Sync mute state
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = isMuted
+    }
+  }, [isMuted])
+
+  // Track video progress
+  const handleTimeUpdate = () => {
+    if (!videoRef.current) return
+    const { currentTime, duration } = videoRef.current
+    if (duration > 0) {
+      setProgressPercent((currentTime / duration) * 100)
+    }
+  }
+
+  // Smooth photo progress bar simulation for image-only clips
+  useEffect(() => {
+    if (clip.videoSrc || !isActive || paused) return
+    setProgressPercent(0)
+    const duration = 7000
+    const start = Date.now()
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - start
+      const pct = Math.min(100, (elapsed / duration) * 100)
+      setProgressPercent(pct)
+      if (pct >= 100) {
+        setProgressPercent(0)
+      }
+    }, 50)
+    return () => clearInterval(timer)
+  }, [isActive, paused, clip.videoSrc])
+
+  // Double tap to like, single tap to play/pause
+  const handleStageClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button, a, input, select, textarea, .action-button, .feed-mode-tabs, .sound-disc')) return
+
+    const now = Date.now()
+    if (now - lastClickRef.current < 280) {
+      // Double tap -> heart animation + like
+      if (!liked) onLike()
+      setHeartAnim(true)
+      setTimeout(() => setHeartAnim(false), 900)
+    } else {
+      setPaused((prev) => !prev)
+    }
+    lastClickRef.current = now
+  }
+
   return (
-    <article className={`video-stage${paused ? ' paused' : ''}`} data-video-id={clip.id}>
-      {clip.videoSrc
-        ? <video src={clip.videoSrc} muted playsInline loop autoPlay style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }} />
-        : <img src={clip.image} alt={clip.imageAlt} />}
-      <div className="feed-mode-tabs">
-        <button>Following</button>
-        <button className="active">For you</button>
-        <button>Live</button>
+    <article
+      className={`video-stage${paused ? ' paused' : ''}${isActive ? ' active-stage' : ''}`}
+      data-video-id={clip.id}
+      onClick={handleStageClick}
+    >
+      {clip.videoSrc ? (
+        <video
+          ref={videoRef}
+          src={clip.videoSrc}
+          poster={clip.image}
+          muted={isMuted}
+          playsInline
+          loop
+          onTimeUpdate={handleTimeUpdate}
+          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }}
+        />
+      ) : (
+        <img
+          src={clip.image}
+          alt={clip.imageAlt}
+          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }}
+        />
+      )}
+
+      {/* Floating double-tap heart animation */}
+      {heartAnim && <div className="heart-pulse-anim" aria-hidden="true">♥</div>}
+
+      {/* Top Floating tabs (Following | For you | Live) */}
+      <div className="feed-mode-tabs" onClick={(e) => e.stopPropagation()}>
+        <button className={feedTab === 'following' ? 'active' : ''} onClick={() => onFeedTabChange('following')}>Following</button>
+        <button className={feedTab === 'for-you' ? 'active' : ''} onClick={() => onFeedTabChange('for-you')}>For you</button>
+        <button className={feedTab === 'live' ? 'active' : ''} onClick={() => onFeedTabChange('live')}>Live</button>
       </div>
-      <div className="video-top">
+
+      <div className="video-top" onClick={(e) => e.stopPropagation()}>
         <span className="live-pill"><span>●</span> FEATURED</span>
-        <button className="sound-pill" onClick={onSound}>♫ {clip.audio}</button>
+        <button className="sound-pill" onClick={onSound} title="View sound">♫ {clip.audio}</button>
+        <button
+          className="mute-pill"
+          onClick={onToggleMute}
+          aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+          title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
+        >
+          {isMuted ? '🔇' : '🔊'}
+        </button>
       </div>
-      <button className="video-controls" aria-label={paused ? 'Play video' : 'Pause video'} onClick={() => setPaused((value) => !value)}>{paused ? '▶' : 'Ⅱ'}</button>
-      <div className="video-actions">
+
+      <button className="video-controls" aria-label={paused ? 'Play video' : 'Pause video'}>
+        {paused ? '▶' : 'Ⅱ'}
+      </button>
+
+      {/* Right-side TikTok actions */}
+      <div className="video-actions" onClick={(e) => e.stopPropagation()}>
         <button className={`action-button like-button${liked ? ' liked' : ''}`} aria-label="Like video" onClick={onLike}>
-          <b>{liked ? '♥' : '♡'}</b><small>{formatCount(clip.likes + (liked ? 1 : 0))}</small>
+          <b>{liked ? '♥' : '♡'}</b>
+          <small>{formatCount(clip.likes + (liked ? 1 : 0))}</small>
         </button>
         <button className="action-button comments-button" aria-label="View comments" onClick={onComments}>
-          <b><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-5.5A7.5 7.5 0 1 1 20 11.5Z" /></svg></b>
+          <b>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-5.5A7.5 7.5 0 1 1 20 11.5Z" /></svg>
+          </b>
           <small>{formatCount(clip.comments)}</small>
         </button>
-        <button className="action-button share-button" aria-label="Share video" onClick={onShare}><b>↗</b><small>Share</small></button>
-        <button className="action-button save-button" aria-label="Save video" onClick={onSave}><b>♧</b><small>Save</small></button>
+        <button className="action-button share-button" aria-label="Share video" onClick={onShare}>
+          <b>↗</b>
+          <small>Share</small>
+        </button>
+        <button className="action-button save-button" aria-label="Save video" onClick={onSave}>
+          <b>♧</b>
+          <small>Save</small>
+        </button>
+        {/* Rotating Sound Disc */}
+        <div
+          className={`sound-disc${paused || !isActive ? ' paused' : ''}`}
+          onClick={onSound}
+          title={clip.audio}
+          aria-label="Sound track disc"
+        >
+          <img src={clip.image} alt="" className="sound-disc-art" />
+        </div>
       </div>
+
+      {/* Bottom video details */}
       <div className="video-bottom">
         <div className="video-user">
           <Avatar initials={clip.initials} />
           <span><strong>{clip.creator}</strong><small>{clip.handle} · 18 min ago</small></span>
-          <button className="follow-button">Follow</button>
+          <button className="follow-button" onClick={(e) => e.stopPropagation()}>Follow</button>
         </div>
         <p className="caption">{clip.caption}</p>
         <div className="tags">{clip.tags}</div>
-        <button className="audio-line" onClick={onSound}>♫ &nbsp; {clip.audio}</button>
+        <button className="audio-line" onClick={(e) => { e.stopPropagation(); onSound(); }}>♫ &nbsp; {clip.audio}</button>
       </div>
-      <div className="video-progress"><span /></div>
+
+      {/* Scrub / Progress Bar */}
+      <div className="video-progress">
+        <span style={{ width: `${progressPercent}%`, transition: clip.videoSrc ? 'width 0.1s linear' : 'none' }} />
+      </div>
     </article>
   )
 }
@@ -712,6 +902,125 @@ export default function App() {
   /* --- feed --- */
   const [clips, setClips] = useState<Clip[]>(starterClips)
   const [liked, setLiked] = useState<Record<string, boolean>>({})
+  const [activeClipIndex, setActiveClipIndex] = useState(0)
+  const [isMuted, setIsMuted] = useState(true)
+  const [homeFeedTab, setHomeFeedTab] = useState<'following' | 'for-you' | 'live'>('for-you')
+  const videoLayoutRef = useRef<HTMLDivElement>(null)
+  const lastWheelTimeRef = useRef(0)
+
+  const scrollToVideo = (index: number) => {
+    const el = videoLayoutRef.current
+    if (!el) return
+    const targetIndex = Math.max(0, Math.min(index, clips.length - 1))
+    const child = el.children[targetIndex] as HTMLElement | undefined
+    if (child) {
+      child.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    } else {
+      el.scrollTo({
+        top: targetIndex * el.clientHeight,
+        behavior: 'smooth',
+      })
+    }
+    setActiveClipIndex(targetIndex)
+  }
+
+  const handleFeedScroll = () => {
+    const el = videoLayoutRef.current
+    if (!el) return
+    const h = el.clientHeight
+    if (!h) return
+    const newIdx = Math.round(el.scrollTop / h)
+    if (newIdx >= 0 && newIdx < clips.length && newIdx !== activeClipIndex) {
+      setActiveClipIndex(newIdx)
+    }
+  }
+
+  const handleFeedWheel = (e: React.WheelEvent) => {
+    if (commentsOpen || soundsOpen) return
+    const now = Date.now()
+    if (now - lastWheelTimeRef.current < 380) return
+    if (Math.abs(e.deltaY) < 25) return
+
+    if (e.deltaY > 0 && activeClipIndex < clips.length - 1) {
+      lastWheelTimeRef.current = now
+      scrollToVideo(activeClipIndex + 1)
+    } else if (e.deltaY < 0 && activeClipIndex > 0) {
+      lastWheelTimeRef.current = now
+      scrollToVideo(activeClipIndex - 1)
+    }
+  }
+
+  // Keyboard navigation for TikTok feed (ArrowDown, ArrowUp, PageDown, PageUp, M)
+  useEffect(() => {
+    if (screen !== 'home') return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'j') {
+        e.preventDefault()
+        scrollToVideo(activeClipIndex + 1)
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'k') {
+        e.preventDefault()
+        scrollToVideo(activeClipIndex - 1)
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault()
+        setIsMuted((prev) => !prev)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [screen, activeClipIndex, clips.length])
+
+  // Fetch published videos from Supabase on mount
+  useEffect(() => {
+    if (!supabase) return
+    let cancelled = false
+    async function loadFeedVideos() {
+      try {
+        const { data, error } = await supabase!
+          .from('videos')
+          .select('id, caption, status, created_at, storage_path, user_id, profiles:user_id(display_name, username, avatar_url)')
+          .eq('status', 'published')
+          .order('created_at', { ascending: false })
+          .limit(20)
+        if (error || !data || cancelled) return
+        if (data.length > 0) {
+          const dbClips: Clip[] = data.map((v: any) => {
+            const profileData = Array.isArray(v.profiles) ? v.profiles[0] : v.profiles
+            const creatorName = profileData?.display_name || profileData?.username || 'Creator'
+            const creatorHandle = `@${profileData?.username || 'user'}`
+            const url = v.storage_path ? supabase!.storage.from('arc-videos').getPublicUrl(v.storage_path).data.publicUrl : ''
+            return {
+              id: v.id,
+              creator: creatorName,
+              handle: creatorHandle,
+              initials: initialsOf(creatorName) || 'CR',
+              caption: v.caption || 'New video',
+              tags: '#arc #trending #visual',
+              audio: 'Original audio · ' + creatorName,
+              likes: 120,
+              comments: 14,
+              image: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1100&q=80',
+              imageAlt: v.caption || 'Video',
+              videoSrc: url,
+              ownerId: v.user_id,
+            }
+          })
+          setClips((prev) => {
+            const existingIds = new Set(dbClips.map((c) => c.id))
+            return [...dbClips, ...prev.filter((c) => !existingIds.has(c.id))]
+          })
+        }
+      } catch {
+        // keep starterClips
+      }
+    }
+    void loadFeedVideos()
+    return () => { cancelled = true }
+  }, [])
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [soundsOpen, setSoundsOpen] = useState(false)
   const [selectedSound, setSelectedSound] = useState<Sound>(sounds[0])
@@ -1084,6 +1393,10 @@ export default function App() {
         ownerId: session?.user.id,
       }
       setClips((current) => [newClip, ...current])
+      setActiveClipIndex(0)
+      if (videoLayoutRef.current) {
+        videoLayoutRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+      }
       setCapturedUrl('')
       setCapturedName('')
       setCapturedFile(null)
@@ -1215,38 +1528,56 @@ export default function App() {
       <section className={`screen${screen === 'home' ? ' active' : ''}`} data-view="home" aria-label="Home feed">
         <div className="feed-layout">
           <div className="feed-main">
-            <div className="feed-heading">
-              <h1>Home</h1>
-              <div className="feed-tabs">
-                {['For you', 'Following', 'Live'].map((tab, index) => (
-                  <button key={tab} className={index === 0 ? 'active' : ''} onClick={() => (tab === 'Live' ? setLiveOpen(true) : notify(`${tab} feed selected in this preview.`))}>{tab}</button>
-                ))}
-              </div>
-            </div>
-            <div className="story-strip" aria-label="Stories">
-              {stories.map((story, index) => (
-                <button key={story.id} className="story-item" onClick={() => openStory(index)}>
-                  <span className="story-ring">
-                    <img src={story.image} alt="" />
-                    {index === 0 && <span className="story-add">+</span>}
-                  </span>
-                  <span>{story.name}</span>
-                </button>
-              ))}
-            </div>
-            <div className="video-layout" aria-label="For you videos">
-              {clips.map((clip) => (
+            <div
+              className="video-layout"
+              ref={videoLayoutRef}
+              onScroll={handleFeedScroll}
+              onWheel={handleFeedWheel}
+              aria-label="For you videos"
+            >
+              {clips.map((clip, index) => (
                 <VideoStage
                   key={clip.id}
                   clip={clip}
+                  isActive={screen === 'home' && activeClipIndex === index}
+                  isMuted={isMuted}
+                  onToggleMute={() => setIsMuted((m) => !m)}
                   liked={!!liked[clip.id]}
                   onLike={() => toggleLike(clip.id)}
                   onComments={() => setCommentsOpen(true)}
                   onShare={() => notify('Share link copied in this preview.')}
                   onSave={() => notify('Saved to your collection.')}
                   onSound={() => setSoundsOpen(true)}
+                  feedTab={homeFeedTab}
+                  onFeedTabChange={(tab) => {
+                    setHomeFeedTab(tab)
+                    if (tab === 'live') setLiveOpen(true)
+                    else notify(`${tab === 'following' ? 'Following' : 'For you'} feed selected.`)
+                  }}
                 />
               ))}
+            </div>
+
+            {/* Desktop floating Up/Down navigation buttons */}
+            <div className="feed-nav-arrows" aria-label="Navigate videos">
+              <button
+                className="feed-nav-btn prev"
+                aria-label="Previous video (Up Arrow)"
+                title="Previous video (Up Arrow)"
+                disabled={activeClipIndex === 0}
+                onClick={() => scrollToVideo(activeClipIndex - 1)}
+              >
+                ▲
+              </button>
+              <button
+                className="feed-nav-btn next"
+                aria-label="Next video (Down Arrow)"
+                title="Next video (Down Arrow)"
+                disabled={activeClipIndex === clips.length - 1}
+                onClick={() => scrollToVideo(activeClipIndex + 1)}
+              >
+                ▼
+              </button>
             </div>
           </div>
           <aside className="feed-aside">
