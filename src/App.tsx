@@ -2527,9 +2527,6 @@ export default function App() {
             <span className="nav-icon">⬛</span>Owner
           </button>
         )}
-        <button className={screen === 'settings' ? 'active' : ''} onClick={() => navigate('settings')}>
-          <span className="nav-icon">⚙</span>Settings
-        </button>
       </nav>
 
       <Toast message={toastMessage} />
