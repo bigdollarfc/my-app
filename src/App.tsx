@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { isSupabaseConfigured, supabase } from './lib/supabase'
+import { supabase } from './lib/supabase'
+import { feedAudio } from './lib/audioEngine'
 
 /* ------------------------------------------------------------------ */
 /* Types & data                                                        */
@@ -214,14 +215,6 @@ const peopleFollowers = [
   { name: 'Devon Miles', initials: 'DM', meta: '@devon.miles · Music' },
 ]
 
-const settingsOptions = [
-  { key: 'private', title: 'Private account', detail: 'Only approved followers can see your posts.', on: false },
-  { key: 'activity', title: 'Activity status', detail: 'Let people you follow see when you are active.', on: true },
-  { key: 'personalized', title: 'Personalized recommendations', detail: 'Use your interests to tune your For you feed.', on: true },
-  { key: 'notifications', title: 'Video notifications', detail: 'Get updates from creators you follow.', on: true },
-  { key: 'datasaver', title: 'Data saver', detail: 'Use less data when you are not on Wi-Fi.', on: false },
-]
-
 const chartBars = [34, 49, 42, 63, 55, 77, 66, 91, 72, 100, 83, 94]
 
 const topVideos = [
@@ -365,31 +358,31 @@ function VideoStage({
   clip,
   isActive,
   isMuted,
-  onToggleMute,
   liked,
   onLike,
   onComments,
   onShare,
   onSave,
   onSound,
-  feedTab,
-  onFeedTabChange,
+  onSearch,
+  isPlaying,
+  onPlayingChange,
 }: {
   clip: Clip
   isActive: boolean
   isMuted: boolean
-  onToggleMute: () => void
   liked: boolean
   onLike: () => void
   onComments: () => void
   onShare: () => void
   onSave: () => void
   onSound: () => void
-  feedTab: 'following' | 'for-you' | 'live'
-  onFeedTabChange: (tab: 'following' | 'for-you' | 'live') => void
+  onSearch: () => void
+  isPlaying: boolean
+  onPlayingChange: (playing: boolean) => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [paused, setPaused] = useState(false)
+  const paused = !isPlaying
   const [progressPercent, setProgressPercent] = useState(0)
   const [heartAnim, setHeartAnim] = useState(false)
   const lastClickRef = useRef(0)
@@ -454,7 +447,8 @@ function VideoStage({
       setHeartAnim(true)
       setTimeout(() => setHeartAnim(false), 900)
     } else {
-      setPaused((prev) => !prev)
+      // Single tap toggles play/pause, which also drives the sound engine.
+      onPlayingChange(!isPlaying)
     }
     lastClickRef.current = now
   }
@@ -487,27 +481,27 @@ function VideoStage({
       {/* Floating double-tap heart animation */}
       {heartAnim && <div className="heart-pulse-anim" aria-hidden="true">♥</div>}
 
-      {/* Top Floating tabs (Following | For you | Live) */}
-      <div className="feed-mode-tabs" onClick={(e) => e.stopPropagation()}>
-        <button className={feedTab === 'following' ? 'active' : ''} onClick={() => onFeedTabChange('following')}>Following</button>
-        <button className={feedTab === 'for-you' ? 'active' : ''} onClick={() => onFeedTabChange('for-you')}>For you</button>
-        <button className={feedTab === 'live' ? 'active' : ''} onClick={() => onFeedTabChange('live')}>Live</button>
-      </div>
-
-      <div className="video-top" onClick={(e) => e.stopPropagation()}>
-        <span className="live-pill"><span>●</span> FEATURED</span>
-        <button className="sound-pill" onClick={onSound} title="View sound">♫ {clip.audio}</button>
+      {/* Top scrim bar: a real search trigger plus a fullscreen toggle */}
+      <div className="video-scrim" onClick={(e) => e.stopPropagation()}>
         <button
-          className="mute-pill"
-          onClick={onToggleMute}
-          aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-          title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
+          className="scrim-search"
+          onClick={onSearch}
+          aria-label="Search"
+          title="Search (S)"
         >
-          {isMuted ? '🔇' : '🔊'}
+          <span className="scrim-search-icon" aria-hidden="true">⌕</span>
+          <span className="scrim-search-text">Search</span>
         </button>
       </div>
 
-      <button className="video-controls" aria-label={paused ? 'Play video' : 'Pause video'}>
+      <button
+        className="video-controls"
+        aria-label={paused ? 'Play video' : 'Pause video'}
+        onClick={(e) => {
+          e.stopPropagation()
+          onPlayingChange(paused)
+        }}
+      >
         {paused ? '▶' : 'Ⅱ'}
       </button>
 
@@ -897,16 +891,23 @@ export default function App() {
   const accountName = profile?.display_name || String(session?.user.user_metadata?.display_name ?? '') || accountEmail.split('@')[0] || 'Maya Chen'
   const accountHandle = `@${profile?.username || accountEmail.split('@')[0] || 'mayamakes'}`
   const accountInitials = initialsOf(accountName) || 'MC'
-  const isAdmin = true // TODO: revert to Boolean(profile?.is_admin) after confirming owner panel access
+  const isAdmin = supabase ? Boolean(profile?.is_admin) : true // demo mode (no backend): local user is the owner
 
   /* --- feed --- */
   const [clips, setClips] = useState<Clip[]>(starterClips)
   const [liked, setLiked] = useState<Record<string, boolean>>({})
   const [activeClipIndex, setActiveClipIndex] = useState(0)
   const [isMuted, setIsMuted] = useState(true)
+  // The feed tabs UI was removed, but the selected feed still shapes how the
+  // generated audio sounds. Kept as a constant here so the audio effect can read it.
   const [homeFeedTab, setHomeFeedTab] = useState<'following' | 'for-you' | 'live'>('for-you')
   const videoLayoutRef = useRef<HTMLDivElement>(null)
   const lastWheelTimeRef = useRef(0)
+
+  // Playback state for the active clip. Tapping the stage (or the play control)
+  // toggles this, and it feeds both the video element and the sound engine so
+  // pausing halts the audio and resuming brings it back.
+  const [feedPlaying, setFeedPlaying] = useState(true)
 
   const scrollToVideo = (index: number) => {
     const el = videoLayoutRef.current
@@ -951,6 +952,39 @@ export default function App() {
   }
 
   // Keyboard navigation for TikTok feed (ArrowDown, ArrowUp, PageDown, PageUp, M)
+  const toggleFeedFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+      } else {
+        await document.exitFullscreen()
+      }
+    } catch {
+      notify('Fullscreen is not available in this browser.')
+    }
+  }, [])
+
+  // Touch swipe navigation for mobile feed (vertical drag = next/previous clip).
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const handleFeedTouchStart = (event: React.TouchEvent) => {
+    const touch = event.touches[0]
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }
+
+  const handleFeedTouchEnd = (event: React.TouchEvent) => {
+    const start = touchStartRef.current
+    touchStartRef.current = null
+    if (!start) return
+    const touch = event.changedTouches[0]
+    const dy = touch.clientY - start.y
+    const dx = touch.clientX - start.x
+    // Ignore mostly-horizontal gestures and tiny taps.
+    if (Math.abs(dy) < 60 || Math.abs(dy) < Math.abs(dx)) return
+    scrollToVideo(dy < 0 ? activeClipIndex + 1 : activeClipIndex - 1)
+  }
+
+  // Keyboard navigation for TikTok feed (ArrowDown, ArrowUp, PageDown, PageUp, M)
   useEffect(() => {
     if (screen !== 'home') return
 
@@ -967,12 +1001,15 @@ export default function App() {
       } else if (e.key === 'm' || e.key === 'M') {
         e.preventDefault()
         setIsMuted((prev) => !prev)
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault()
+        void toggleFeedFullscreen()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [screen, activeClipIndex, clips.length])
+  }, [screen, activeClipIndex, clips.length, toggleFeedFullscreen])
 
   // Fetch published videos from Supabase on mount
   useEffect(() => {
@@ -1023,6 +1060,35 @@ export default function App() {
   }, [])
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [soundsOpen, setSoundsOpen] = useState(false)
+
+  // Drive the background-music engine from the active clip + mute state.
+  // Clips that ship a real video file keep their own track; the rest get generated audio.
+  useEffect(() => {
+    if (screen !== 'home' || commentsOpen || soundsOpen || isMuted || !feedPlaying) {
+      feedAudio.stop()
+      return
+    }
+    const clip = clips[activeClipIndex]
+    if (!clip || clip.videoSrc) {
+      feedAudio.stop()
+      return
+    }
+    // "For you" gets the full generated track; the "following" feed plays a
+    // quieter, sparser version so the two feeds sound distinct.
+    feedAudio.play(clip.id, homeFeedTab === 'following' ? 'following' : 'for-you')
+    return () => feedAudio.stop()
+  }, [screen, activeClipIndex, clips, isMuted, commentsOpen, soundsOpen, feedPlaying, homeFeedTab])
+
+  // Reset playback to playing whenever the active clip changes or the user
+  // leaves the home screen, so a clip never starts silently paused.
+  useEffect(() => {
+    setFeedPlaying(true)
+  }, [activeClipIndex, screen])
+
+  // Keep the engine's mute flag in sync so unmuting resumes the right track.
+  useEffect(() => {
+    feedAudio.setMuted(isMuted)
+  }, [isMuted])
   const [selectedSound, setSelectedSound] = useState<Sound>(sounds[0])
   const [soundQuery, setSoundQuery] = useState('')
 
@@ -1065,6 +1131,54 @@ export default function App() {
     setScreen('message')
     notify('Story reply opened in Messages.')
   }
+
+  /* --- studio --- */
+  type StudioTab = 'overview' | 'rewards' | 'subscriptions' | 'promote' | 'gifts' | 'live'
+  const [studioTab, setStudioTab] = useState<StudioTab>('overview')
+  const [promoteClip, setPromoteClip] = useState(0)
+  const [promoteGoal, setPromoteGoal] = useState<'views' | 'followers' | 'profile'>('views')
+  const [promoteDays, setPromoteDays] = useState(7)
+  const [promoteBudget, setPromoteBudget] = useState(20)
+  const [subTier, setSubTier] = useState<'basic' | 'plus' | 'pro'>('plus')
+  const [studioRewardClaimed, setStudioRewardClaimed] = useState(false)
+
+  const promoteEstimate = useMemo(() => {
+    const base = promoteGoal === 'views' ? 1100 : promoteGoal === 'followers' ? 90 : 260
+    return Math.round((base * promoteBudget * promoteDays) / 20)
+  }, [promoteGoal, promoteBudget, promoteDays])
+
+  const subscriptionTiers = [
+    { id: 'basic' as const, price: 2.99, perks: ['Subscriber badge', 'Members-only comments'] },
+    { id: 'plus' as const, price: 5.99, perks: ['Everything in Basic', 'Exclusive videos', 'Priority replies'] },
+    { id: 'pro' as const, price: 9.99, perks: ['Everything in Plus', 'Monthly live session', 'Early access drops'] },
+  ]
+
+  const studioFollowers = [
+    { id: 1, name: 'Sofia Kim', initials: 'SK', tier: 'plus' as const, since: '3 months', paid: 17.97 },
+    { id: 2, name: 'Ari Rivera', initials: 'AR', tier: 'pro' as const, since: '6 months', paid: 59.94 },
+    { id: 3, name: 'Nia Cooks', initials: 'NC', tier: 'basic' as const, since: '1 month', paid: 2.99 },
+    { id: 4, name: 'Kai Tanaka', initials: 'KT', tier: 'plus' as const, since: '2 months', paid: 11.98 },
+  ]
+
+  const studioRewardRequirements = [
+    { label: 'Reach 1,000 followers', done: true, progress: 100 },
+    { label: 'Post 3 videos in 30 days', done: true, progress: 100 },
+    { label: 'Accumulate 100,000 eligible views', done: false, progress: 74 },
+    { label: 'Keep a clean community record', done: true, progress: 100 },
+  ]
+
+  const studioGifts = [
+    { id: 1, name: 'Rose', count: 412, coins: 1, from: 'Sofia Kim' },
+    { id: 2, name: 'Doughnut', count: 128, coins: 30, from: 'Ari Rivera' },
+    { id: 3, name: 'Galaxy', count: 9, coins: 1000, from: 'Elena Rostova' },
+    { id: 4, name: 'Hand hearts', count: 903, coins: 5, from: 'Kai Tanaka' },
+  ]
+
+  const studioLiveHistory = [
+    { id: 1, title: 'Sketchbook hour', when: 'Nov 22', viewers: 4820, minutes: 62, coins: 21400 },
+    { id: 2, title: 'Q&A: growing on Arc', when: 'Nov 14', viewers: 3110, minutes: 48, coins: 12800 },
+    { id: 3, title: 'Late night studio', when: 'Nov 3', viewers: 1980, minutes: 75, coins: 7300 },
+  ]
 
   /* --- live --- */
   const [liveOpen, setLiveOpen] = useState(false)
@@ -1118,9 +1232,49 @@ export default function App() {
   }
 
   /* --- settings --- */
-  const [settingsOn, setSettingsOn] = useState<Record<string, boolean>>(
-    Object.fromEntries(settingsOptions.map((option) => [option.key, option.on])),
-  )
+  type SettingsSection = 'Account' | 'Privacy' | 'Notifications' | 'Playback' | 'Accessibility'
+  const SETTINGS_SECTIONS: SettingsSection[] = ['Account', 'Privacy', 'Notifications', 'Playback', 'Accessibility']
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('Account')
+
+  // Persistent app settings. Every switch below is stored locally and the ones
+  // that affect the app (playback, accessibility) are applied live.
+  const defaultPrefs = {
+    privateAccount: false, activityStatus: true, personalized: true,
+    notifyLikes: true, notifyComments: true, notifyFollows: true, notifyUploads: true, notifyAnnouncements: true,
+    autoplay: true, startMuted: true, dataSaver: false, quality: 'auto', volume: 60,
+    reduceMotion: false, largeText: false, highContrast: false, captions: false,
+  }
+  const [prefs, setPrefs] = useState<typeof defaultPrefs>(() => {
+    try {
+      const stored = localStorage.getItem('visual-prefs')
+      return stored ? { ...defaultPrefs, ...JSON.parse(stored) } : defaultPrefs
+    } catch { return defaultPrefs }
+  })
+  function setPref<K extends keyof typeof defaultPrefs>(key: K, value: (typeof defaultPrefs)[K]) {
+    setPrefs((current) => {
+      const next = { ...current, [key]: value }
+      try { localStorage.setItem('visual-prefs', JSON.stringify(next)) } catch { /* storage unavailable */ }
+      return next
+    })
+  }
+
+  // Playback prefs and the five settings sections live in `prefs` above.
+
+  // Apply playback preferences to the live feed.
+  useEffect(() => {
+    setIsMuted(prefs.startMuted)
+    if (!prefs.autoplay) setFeedPlaying(false)
+  }, [prefs.startMuted, prefs.autoplay])
+
+  // Apply accessibility preferences as classes on the app shell.
+  useEffect(() => {
+    document.body.classList.toggle('a11y-reduce-motion', prefs.reduceMotion)
+    document.body.classList.toggle('a11y-large-text', prefs.largeText)
+    document.body.classList.toggle('a11y-high-contrast', prefs.highContrast)
+    return () => {
+      document.body.classList.remove('a11y-reduce-motion', 'a11y-large-text', 'a11y-high-contrast')
+    }
+  }, [prefs.reduceMotion, prefs.largeText, prefs.highContrast])
 
   /* --- profile editing --- */
   const [profileOpen, setProfileOpen] = useState(false)
@@ -1454,6 +1608,47 @@ export default function App() {
     }
   }
 
+  /* --- search --- */
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const q = searchQuery.trim().toLowerCase()
+  const searchClipResults = useMemo(
+    () => (q ? clips.filter((c) => `${c.creator} ${c.caption} ${c.tags} ${c.audio}`.toLowerCase().includes(q)).slice(0, 6) : []),
+    [q, clips],
+  )
+  const searchCreatorResults = useMemo(() => {
+    if (!q) return []
+    const seen = new Set<string>()
+    const found: { name: string; handle: string; initials: string }[] = []
+    clips.forEach((c) => {
+      if (!seen.has(c.handle) && `${c.creator} ${c.handle}`.toLowerCase().includes(q)) {
+        seen.add(c.handle)
+        found.push({ name: c.creator, handle: c.handle, initials: c.initials })
+      }
+    })
+    suggestedCreators.forEach((c) => {
+      const handle = `@${c.name.toLowerCase().replace(/\s+/g, '.')}`
+      if (!seen.has(handle) && c.name.toLowerCase().includes(q)) {
+        seen.add(handle)
+        found.push({ name: c.name, handle, initials: c.initials })
+      }
+    })
+    return found.slice(0, 4)
+  }, [q, clips])
+  const searchSoundResults = useMemo(
+    () => (q ? sounds.filter((s) => `${s.title} ${s.artist}`.toLowerCase().includes(q)).slice(0, 4) : []),
+    [q],
+  )
+
+  function jumpToClip(clipId: string) {
+    const index = clips.findIndex((c) => c.id === clipId)
+    if (index >= 0) {
+      setScreen('home')
+      setSearchOpen(false)
+      setTimeout(() => scrollToVideo(index), 60)
+    }
+  }
+
   /* --- derived --- */
   const myClips = useMemo(() => (session ? clips.filter((clip) => clip.ownerId === session.user.id) : []), [clips, session])
   const profileGridItems = session && myClips.length > 0
@@ -1513,7 +1708,7 @@ export default function App() {
   <div className="main-area">
     <header className="topbar">
       <div className="mobile-brand"><span className="mobile-brand-mark"><VisualMark /></span>Visual</div>
-      <label className="searchbox"><span>⌕</span><input aria-label="Search" placeholder="Search creators, sounds, and videos" /></label>
+      <label className="searchbox" onClick={() => setSearchOpen(true)}><span>⌕</span><input aria-label="Search" placeholder="Search creators, sounds, and videos" readOnly value="" /></label>
       <span className="topbar-spacer" />
       <span className="topbar-label">Make room for good things</span>
       <button className="phone-story-shortcut" onClick={() => openStory(2)} aria-label="Open stories"><Avatar initials="SK" src={stories[2].image} /></button>
@@ -1528,11 +1723,44 @@ export default function App() {
       <section className={`screen${screen === 'home' ? ' active' : ''}`} data-view="home" aria-label="Home feed">
         <div className="feed-layout">
           <div className="feed-main">
+            {/* Feed mode tabs: LIVE | Following | For you */}
+            <div className="feed-mode-tabs" role="tablist" aria-label="Feed mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={homeFeedTab === 'live'}
+                className={`feed-mode-tab live-tab${homeFeedTab === 'live' ? ' active' : ''}`}
+                onClick={() => setHomeFeedTab('live')}
+              >
+                <span className="live-dot" aria-hidden="true" />
+                LIVE
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={homeFeedTab === 'following'}
+                className={`feed-mode-tab${homeFeedTab === 'following' ? ' active' : ''}`}
+                onClick={() => setHomeFeedTab('following')}
+              >
+                Following
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={homeFeedTab === 'for-you'}
+                className={`feed-mode-tab${homeFeedTab === 'for-you' ? ' active' : ''}`}
+                onClick={() => setHomeFeedTab('for-you')}
+              >
+                For you
+              </button>
+            </div>
             <div
               className="video-layout"
               ref={videoLayoutRef}
               onScroll={handleFeedScroll}
               onWheel={handleFeedWheel}
+              onTouchStart={handleFeedTouchStart}
+              onTouchEnd={handleFeedTouchEnd}
               aria-label="For you videos"
             >
               {clips.map((clip, index) => (
@@ -1541,19 +1769,15 @@ export default function App() {
                   clip={clip}
                   isActive={screen === 'home' && activeClipIndex === index}
                   isMuted={isMuted}
-                  onToggleMute={() => setIsMuted((m) => !m)}
                   liked={!!liked[clip.id]}
                   onLike={() => toggleLike(clip.id)}
                   onComments={() => setCommentsOpen(true)}
                   onShare={() => notify('Share link copied in this preview.')}
                   onSave={() => notify('Saved to your collection.')}
                   onSound={() => setSoundsOpen(true)}
-                  feedTab={homeFeedTab}
-                  onFeedTabChange={(tab) => {
-                    setHomeFeedTab(tab)
-                    if (tab === 'live') setLiveOpen(true)
-                    else notify(`${tab === 'following' ? 'Following' : 'For you'} feed selected.`)
-                  }}
+                  onSearch={() => setSearchOpen(true)}
+                  isPlaying={feedPlaying && activeClipIndex === index}
+                  onPlayingChange={setFeedPlaying}
                 />
               ))}
             </div>
@@ -1778,24 +2002,67 @@ export default function App() {
         <PageHead title="Settings" subtitle="Shape your account and your experience." />
         <div className="settings-layout">
           <nav className="settings-nav">
-            {['Account', 'Privacy', 'Notifications', 'Playback', 'Accessibility'].map((section, index) => (
-              <button key={section} className={index === 0 ? 'active' : ''} onClick={() => notify(`${section} settings selected.`)}>{section}</button>
+            {SETTINGS_SECTIONS.map((section) => (
+              <button key={section} className={settingsSection === section ? 'active' : ''} onClick={() => setSettingsSection(section)}>{section}</button>
             ))}
           </nav>
           <section className="settings-content">
-            <h2>Account preferences</h2>
-            <p>Manage how you use Arc.</p>
-            {settingsOptions.map((option) => (
-              <div className="setting-item" key={option.key}>
-                <span><b>{option.title}</b><small>{option.detail}</small></span>
-                <input type="checkbox" checked={settingsOn[option.key]} onChange={(event) => setSettingsOn((current) => ({ ...current, [option.key]: event.target.checked }))} />
-              </div>
-            ))}
-            <div className="button-row">
-              {session && <button className="secondary-button" onClick={() => { void supabase?.auth.signOut(); notify('Signed out.'); setScreen('home') }}>Sign out</button>}
-              <button className="primary-button" onClick={() => notify('Settings preview saved locally.')}>Save preferences</button>
-                </div>
-            {!isSupabaseConfigured && <p className="field-help">Sign in needs the app owner to configure Supabase.</p>}
+            {settingsSection === 'Account' && (
+              <>
+                <h2>Account</h2>
+                <p>Who you are on Visual.</p>
+                <div className="setting-item"><span><b>Display name</b><small>{accountName}</small></span><button className="secondary-button" onClick={beginProfileEdit}>Edit</button></div>
+                <div className="setting-item"><span><b>Username</b><small>{accountHandle}</small></span><button className="secondary-button" onClick={beginProfileEdit}>Edit</button></div>
+                <div className="setting-item"><span><b>Email</b><small>{session?.user.email ?? 'Not signed in'}</small></span><span className="pill on-blue">{session ? 'Verified' : 'Guest'}</span></div>
+                <div className="setting-item"><span><b>Profile photos</b><small>Avatar and banner</small></span><button className="secondary-button" onClick={beginProfileEdit}>Change</button></div>
+                {session && <div className="button-row"><button className="secondary-button" onClick={() => { void supabase?.auth.signOut(); notify('Signed out.'); setScreen('home') }}>Sign out</button></div>}
+                {!session && <div className="button-row"><button className="primary-button" onClick={() => openAuth('signin')}>Sign in</button><button className="secondary-button" onClick={() => openAuth('signup')}>Create account</button></div>}
+              </>
+            )}
+            {settingsSection === 'Privacy' && (
+              <>
+                <h2>Privacy</h2>
+                <p>Control who sees you and your posts.</p>
+                <div className="setting-item"><span><b>Private account</b><small>Only approved followers can see your posts.</small></span><input type="checkbox" checked={prefs.privateAccount} onChange={(e) => setPref('privateAccount', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Activity status</b><small>Let people you follow see when you are active.</small></span><input type="checkbox" checked={prefs.activityStatus} onChange={(e) => setPref('activityStatus', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Personalized recommendations</b><small>Use your interests to tune your For you feed.</small></span><input type="checkbox" checked={prefs.personalized} onChange={(e) => setPref('personalized', e.target.checked)} /></div>
+                <label className="field">Who can send you messages<select defaultValue="followers"><option value="everyone">Everyone</option><option value="followers">Followers you follow back</option><option value="nobody">Nobody</option></select></label>
+                <label className="field">Who can duet / remix your videos<select defaultValue="everyone"><option value="everyone">Everyone</option><option value="followers">Followers</option><option value="nobody">Nobody</option></select></label>
+              </>
+            )}
+            {settingsSection === 'Notifications' && (
+              <>
+                <h2>Notifications</h2>
+                <p>Choose what reaches you.</p>
+                <div className="setting-item"><span><b>Likes</b><small>When someone likes your video.</small></span><input type="checkbox" checked={prefs.notifyLikes} onChange={(e) => setPref('notifyLikes', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Comments</b><small>Replies and mentions.</small></span><input type="checkbox" checked={prefs.notifyComments} onChange={(e) => setPref('notifyComments', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>New followers</b><small>When someone follows you.</small></span><input type="checkbox" checked={prefs.notifyFollows} onChange={(e) => setPref('notifyFollows', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Uploads from creators</b><small>New videos from people you follow.</small></span><input type="checkbox" checked={prefs.notifyUploads} onChange={(e) => setPref('notifyUploads', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Announcements</b><small>Platform news from the owner.</small></span><input type="checkbox" checked={prefs.notifyAnnouncements} onChange={(e) => setPref('notifyAnnouncements', e.target.checked)} /></div>
+              </>
+            )}
+            {settingsSection === 'Playback' && (
+              <>
+                <h2>Playback</h2>
+                <p>How videos play in your feed.</p>
+                <div className="setting-item"><span><b>Autoplay videos</b><small>Start playing when a video fills the screen.</small></span><input type="checkbox" checked={prefs.autoplay} onChange={(e) => setPref('autoplay', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Start muted</b><small>Videos begin silent until you unmute.</small></span><input type="checkbox" checked={prefs.startMuted} onChange={(e) => setPref('startMuted', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Data saver</b><small>Use less data when you are not on Wi-Fi.</small></span><input type="checkbox" checked={prefs.dataSaver} onChange={(e) => setPref('dataSaver', e.target.checked)} /></div>
+                <label className="field">Video quality<select value={prefs.quality} onChange={(e) => setPref('quality', e.target.value)}><option value="auto">Auto</option><option value="high">High (1080p)</option><option value="medium">Medium (720p)</option><option value="low">Low (480p)</option></select></label>
+                <label className="field">Default volume<b className="volume-value">{prefs.volume}%</b><input type="range" min={0} max={100} value={prefs.volume} onChange={(e) => setPref('volume', Number(e.target.value))} aria-label="Default volume" /></label>
+              </>
+            )}
+            {settingsSection === 'Accessibility' && (
+              <>
+                <h2>Accessibility</h2>
+                <p>Make Visual easier to see and use. Changes apply immediately.</p>
+                <div className="setting-item"><span><b>Reduce motion</b><small>Turn off animated transitions and the rotating sound disc.</small></span><input type="checkbox" checked={prefs.reduceMotion} onChange={(e) => setPref('reduceMotion', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Larger text</b><small>Increase the size of text across the app.</small></span><input type="checkbox" checked={prefs.largeText} onChange={(e) => setPref('largeText', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>High contrast</b><small>Stronger borders and brighter text.</small></span><input type="checkbox" checked={prefs.highContrast} onChange={(e) => setPref('highContrast', e.target.checked)} /></div>
+                <div className="setting-item"><span><b>Captions</b><small>Show captions on videos when available.</small></span><input type="checkbox" checked={prefs.captions} onChange={(e) => setPref('captions', e.target.checked)} /></div>
+              </>
+            )}
+            <p className="field-help">Preferences are saved automatically on this device.</p>
           </section>
         </div>
       </section>
@@ -1807,29 +2074,256 @@ export default function App() {
           subtitle="Your videos are finding their people."
           tools={<><button className="secondary-button">Last 30 days⌄</button><button className="primary-button" onClick={startCamera}>＋ New video</button></>}
         />
-        <div className="studio-metrics">
-          <div className="metric-card"><small>Video views</small><strong>128.7K</strong><span>↑ 18.4% this month</span></div>
-          <div className="metric-card"><small>Profile visits</small><strong>24.6K</strong><span>↑ 12.1% this month</span></div>
-          <div className="metric-card"><small>New followers</small><strong>3,248</strong><span>↑ 9.8% this month</span></div>
-          <div className="metric-card"><small>Engagement</small><strong>8.6%</strong><span>↑ 2.3% this month</span></div>
-        </div>
-        <div className="studio-grid">
-          <section className="studio-panel">
-            <h2>Views over time</h2>
-            <div className="chart-bars">{chartBars.map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div>
-            <div className="chart-labels"><span>Nov 1</span><span>Nov 7</span><span>Nov 14</span><span>Nov 21</span><span>Nov 30</span></div>
+
+        <nav className="studio-tabs" aria-label="Studio sections">
+          {([
+            { id: 'overview' as StudioTab, label: 'Insights' },
+            { id: 'rewards' as StudioTab, label: 'Creator Rewards' },
+            { id: 'subscriptions' as StudioTab, label: 'Subscriptions' },
+            { id: 'promote' as StudioTab, label: 'Promote' },
+            { id: 'gifts' as StudioTab, label: 'Video gifts' },
+            { id: 'live' as StudioTab, label: 'Live rewards' },
+          ]).map((tab) => (
+            <button
+              key={tab.id}
+              className={`studio-tab-btn${studioTab === tab.id ? ' active' : ''}`}
+              onClick={() => setStudioTab(tab.id)}
+              aria-current={studioTab === tab.id}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        {studioTab === 'overview' && (
+          <>
+            <div className="studio-metrics">
+              <div className="metric-card"><small>Video views</small><strong>128.7K</strong><span>↑ 18.4% this month</span></div>
+              <div className="metric-card"><small>Profile visits</small><strong>24.6K</strong><span>↑ 12.1% this month</span></div>
+              <div className="metric-card"><small>New followers</small><strong>3,248</strong><span>↑ 9.8% this month</span></div>
+              <div className="metric-card"><small>Engagement</small><strong>8.6%</strong><span>↑ 2.3% this month</span></div>
+            </div>
+            <div className="studio-grid">
+              <section className="studio-panel">
+                <h2>Views over time</h2>
+                <div className="chart-bars">{chartBars.map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div>
+                <div className="chart-labels"><span>Nov 1</span><span>Nov 7</span><span>Nov 14</span><span>Nov 21</span><span>Nov 30</span></div>
+              </section>
+              <section className="studio-panel">
+                <h2>Top videos</h2>
+                {topVideos.map((video) => (
+                  <div className="top-video" key={video.title}>
+                    <img src={video.image} alt={`${video.title} thumbnail`} />
+                    <span><b>{video.title}</b><small>{video.when}</small></span>
+                    <strong>{video.views}</strong>
+                  </div>
+                ))}
+              </section>
+            </div>
+          </>
+        )}
+
+        {studioTab === 'rewards' && (
+          <section className="studio-card">
+            <h3>Visual Creator Rewards</h3>
+            <p>Eligible views in the last 30 days count toward creator rewards. Keep posting to stay in the programme.</p>
+            <div className="rewards-grid">
+              <div className="reward-stat-box"><small>Eligible views</small><strong>74.2K</strong><span>of 100K target</span></div>
+              <div className="reward-stat-box"><small>Estimated reward</small><strong>$182.40</strong><span>This period</span></div>
+              <div className="reward-stat-box"><small>Lifetime paid</small><strong>$1,204</strong><span>Since joining</span></div>
+            </div>
+            <div className="requirements-list">
+              {studioRewardRequirements.map((req) => (
+                <div className="req-item" key={req.label}>
+                  <span className={`req-badge ${req.done ? 'done' : 'pending'}`}>{req.done ? '✓' : '•'}</span>
+                  <div className="req-info">
+                    <b>{req.label}</b>
+                    <small>{req.done ? 'Completed' : `${req.progress}% complete`}</small>
+                    <div className="req-progress"><span style={{ width: `${req.progress}%` }} /></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <footer className="button-row">
+              <button
+                className="primary-button"
+                disabled={studioRewardClaimed || studioRewardRequirements.some((r) => !r.done)}
+                onClick={() => { setStudioRewardClaimed(true); notify('Reward claim submitted.') }}
+              >
+                {studioRewardClaimed ? 'Claim submitted' : 'Claim available rewards'}
+              </button>
+            </footer>
           </section>
-          <section className="studio-panel">
-            <h2>Top videos</h2>
-            {topVideos.map((video) => (
-              <div className="top-video" key={video.title}>
-                <img src={video.image} alt={`${video.title} thumbnail`} />
-                <span><b>{video.title}</b><small>{video.when}</small></span>
-                <strong>{video.views}</strong>
+        )}
+
+        {studioTab === 'subscriptions' && (
+          <section className="studio-card">
+            <h3>Subscriptions</h3>
+            <p>Offer a recurring membership. Subscribers get your badge, perks, and members-only posts.</p>
+            <div className="rewards-grid">
+              <div className="reward-stat-box"><small>Active subscribers</small><strong>{studioFollowers.length}</strong><span>↑ 2 this month</span></div>
+              <div className="reward-stat-box"><small>Monthly recurring</small><strong>${studioFollowers.reduce((sum, f) => sum + f.paid / 3, 0).toFixed(2)}</strong><span>Projected</span></div>
+              <div className="reward-stat-box"><small>Churn</small><strong>4.1%</strong><span>Last 30 days</span></div>
+            </div>
+            <div className="promote-steps">
+              <div className="promote-step">
+                <h4>Choose your tier pricing</h4>
+                <div className="promote-options">
+                  {subscriptionTiers.map((tier) => (
+                    <button
+                      key={tier.id}
+                      className={`promote-opt-btn${subTier === tier.id ? ' active' : ''}`}
+                      onClick={() => setSubTier(tier.id)}
+                    >
+                      <b style={{ textTransform: 'capitalize' }}>{tier.id}</b>
+                      <div style={{ color: '#8fa7c4', fontSize: 11, marginTop: 4 }}>${tier.price} / month</div>
+                      <ul style={{ margin: '8px 0 0', paddingLeft: 16, color: '#aaa', fontSize: 11, lineHeight: 1.6 }}>
+                        {tier.perks.map((perk) => <li key={perk}>{perk}</li>)}
+                      </ul>
+                    </button>
+                  ))}
+                </div>
+                <footer className="button-row">
+                  <button className="primary-button" onClick={() => notify(`Subscriptions set to the ${subTier} tier.`)}>Save tier pricing</button>
+                </footer>
+              </div>
+              <div className="promote-step">
+                <h4>Your subscribers</h4>
+                {studioFollowers.map((person) => (
+                  <div className="top-video" key={person.id}>
+                    <Avatar initials={person.initials} />
+                    <span><b>{person.name}</b><small>{person.tier} · {person.since}</small></span>
+                    <strong>${person.paid.toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {studioTab === 'promote' && (
+          <section className="studio-card">
+            <h3>Promote content</h3>
+            <p>Pick a video, set a goal, and grow its reach. You only pay for the budget you choose.</p>
+            <div className="promote-steps">
+              <div className="promote-step">
+                <h4>1. Choose a video</h4>
+                <div className="promote-options">
+                  {clips.slice(0, 4).map((clip, index) => (
+                    <button
+                      key={clip.id ?? index}
+                      className={`promote-opt-btn${promoteClip === index ? ' active' : ''}`}
+                      onClick={() => setPromoteClip(index)}
+                    >
+                      <b>{clip.creator}</b>
+                      <div style={{ color: '#8fa7c4', fontSize: 11, marginTop: 4 }}>
+                        {clip.caption.length > 42 ? `${clip.caption.slice(0, 42)}…` : clip.caption}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="promote-step">
+                <h4>2. Pick a goal</h4>
+                <div className="promote-options">
+                  {([
+                    { id: 'views' as const, label: 'More video views' },
+                    { id: 'followers' as const, label: 'More followers' },
+                    { id: 'profile' as const, label: 'More profile visits' },
+                  ]).map((goal) => (
+                    <button
+                      key={goal.id}
+                      className={`promote-opt-btn${promoteGoal === goal.id ? ' active' : ''}`}
+                      onClick={() => setPromoteGoal(goal.id)}
+                    >
+                      {goal.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="promote-step">
+                <h4>3. Set your budget</h4>
+                <div className="slider-group">
+                  <div className="slider-row"><span>Daily budget</span><b>${promoteBudget}</b></div>
+                  <input
+                    className="range-slider"
+                    type="range"
+                    min={5}
+                    max={200}
+                    step={5}
+                    value={promoteBudget}
+                    onChange={(event) => setPromoteBudget(Number(event.target.value))}
+                    aria-label="Daily budget"
+                  />
+                  <div className="slider-row"><span>Duration</span><b>{promoteDays} days</b></div>
+                  <input
+                    className="range-slider"
+                    type="range"
+                    min={1}
+                    max={30}
+                    step={1}
+                    value={promoteDays}
+                    onChange={(event) => setPromoteDays(Number(event.target.value))}
+                    aria-label="Campaign duration in days"
+                  />
+                </div>
+                <div className="rewards-grid" style={{ marginTop: 16 }}>
+                  <div className="reward-stat-box"><small>Estimated reach</small><strong>{promoteEstimate.toLocaleString()}</strong><span>{promoteGoal.replace('profile', 'profile visits')}</span></div>
+                  <div className="reward-stat-box"><small>Total spend</small><strong>${promoteBudget * promoteDays}</strong><span>Over {promoteDays} days</span></div>
+                </div>
+              </div>
+              <footer className="button-row">
+                <button
+                  className="primary-button"
+                  onClick={() => notify(`Promotion started · ${promoteBudget * promoteDays} for ${promoteDays} days.`)}
+                >
+                  Start promotion
+                </button>
+              </footer>
+            </div>
+          </section>
+        )}
+
+        {studioTab === 'gifts' && (
+          <section className="studio-card">
+            <h3>Video gifts</h3>
+            <p>Gifts viewers send on your videos. Coins convert to creator earnings at $0.01 per coin.</p>
+            <div className="rewards-grid">
+              <div className="reward-stat-box"><small>Gifts this month</small><strong>{studioGifts.reduce((s, g) => s + g.count, 0).toLocaleString()}</strong><span>↑ 27% this month</span></div>
+              <div className="reward-stat-box"><small>Coins earned</small><strong>{studioGifts.reduce((s, g) => s + g.count * g.coins, 0).toLocaleString()}</strong><span>All gift types</span></div>
+              <div className="reward-stat-box"><small>Estimated payout</small><strong>${(studioGifts.reduce((s, g) => s + g.count * g.coins, 0) * 0.01).toFixed(2)}</strong><span>Before fees</span></div>
+            </div>
+            {studioGifts.map((gift) => (
+              <div className="top-video" key={gift.id}>
+                <span className="sound-cover">🎁</span>
+                <span><b>{gift.name}</b><small>{gift.count.toLocaleString()} sent · from {gift.from}</small></span>
+                <strong>{(gift.count * gift.coins).toLocaleString()} coins</strong>
               </div>
             ))}
           </section>
-        </div>
+        )}
+
+        {studioTab === 'live' && (
+          <section className="studio-card">
+            <h3>Live rewards</h3>
+            <p>Review how your live sessions performed and what viewers sent during each stream.</p>
+            <div className="rewards-grid">
+              <div className="reward-stat-box"><small>Hours streamed</small><strong>{(studioLiveHistory.reduce((s, l) => s + l.minutes, 0) / 60).toFixed(1)}</strong><span>Last 30 days</span></div>
+              <div className="reward-stat-box"><small>Total viewers</small><strong>{studioLiveHistory.reduce((s, l) => s + l.viewers, 0).toLocaleString()}</strong><span>All sessions</span></div>
+              <div className="reward-stat-box"><small>Coins from live</small><strong>{studioLiveHistory.reduce((s, l) => s + l.coins, 0).toLocaleString()}</strong><span>Before fees</span></div>
+            </div>
+            {studioLiveHistory.map((session) => (
+              <div className="top-video" key={session.id}>
+                <span className="sound-cover">◉</span>
+                <span><b>{session.title}</b><small>{session.when} · {session.minutes} min · {session.viewers.toLocaleString()} viewers</small></span>
+                <strong>{session.coins.toLocaleString()} coins</strong>
+              </div>
+            ))}
+            <footer className="button-row">
+              <button className="primary-button" onClick={() => setLiveOpen(true)}>Preview a live session</button>
+            </footer>
+          </section>
+        )}
       </section>
       {/* ================= OWNER PANEL (admins only) ================= */}
       {isAdmin && screen === 'owner' && <OwnerPanel notify={notify} refreshProfile={fetchProfile} />}
@@ -1949,6 +2443,56 @@ export default function App() {
     </section>
   </div>
 
+  {/* ---------- Search modal ---------- */ }
+  <Modal open={searchOpen} onClose={() => setSearchOpen(false)} labelledBy="search-title" className="search-modal-card">
+    <ModalHead title="Search" subtitle="Videos, creators, and sounds" onClose={() => setSearchOpen(false)} />
+    <label className="sound-search">⌕<input autoFocus placeholder="Search creators, sounds, and videos" aria-label="Search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /></label>
+    {q && (
+      <div className="search-results">
+        {searchClipResults.length > 0 && (
+          <>
+            <small className="search-group-label">Videos</small>
+            {searchClipResults.map((clip) => (
+              <button className="sound-row" key={clip.id} onClick={() => jumpToClip(clip.id)}>
+                <span className="sound-cover"><img src={clip.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} /></span>
+                <span><b>{clip.caption.slice(0, 48)}{clip.caption.length > 48 ? '…' : ''}</b><small>{clip.creator} · {clip.audio}</small></span>
+                <span className="sound-preview-button">Watch →</span>
+              </button>
+            ))}
+          </>
+        )}
+        {searchCreatorResults.length > 0 && (
+          <>
+            <small className="search-group-label">Creators</small>
+            {searchCreatorResults.map((creator) => (
+              <button className="sound-row" key={creator.handle} onClick={() => { setSearchOpen(false); navigate('profile') }}>
+                <span className="sound-cover"><Avatar initials={creator.initials} size={34} /></span>
+                <span><b>{creator.name}</b><small>{creator.handle}</small></span>
+                <span className="sound-preview-button">View →</span>
+              </button>
+            ))}
+          </>
+        )}
+        {searchSoundResults.length > 0 && (
+          <>
+            <small className="search-group-label">Sounds</small>
+            {searchSoundResults.map((sound) => (
+              <button className="sound-row" key={sound.id} onClick={() => { setSearchOpen(false); setSoundsOpen(true) }}>
+                <span className="sound-cover">♫</span>
+                <span><b>{sound.title}</b><small>{sound.artist} · {sound.usage}</small></span>
+                <span className="sound-preview-button">Open →</span>
+              </button>
+            ))}
+          </>
+        )}
+        {searchClipResults.length === 0 && searchCreatorResults.length === 0 && searchSoundResults.length === 0 && (
+          <p className="panel-note">No results for “{searchQuery.trim()}”.</p>
+        )}
+      </div>
+    )}
+    {!q && <p className="panel-note" style={{ padding: '8px 4px' }}>Start typing to search videos, creators, and sounds.</p>}
+  </Modal>
+
   {/* ---------- Sounds modal ---------- */ }
   <Modal open={soundsOpen} onClose={() => setSoundsOpen(false)} labelledBy="sounds-title" className="sounds-card">
     <ModalHead title="Sounds" subtitle="Explore sounds used by the community" onClose={() => setSoundsOpen(false)} />
@@ -1978,6 +2522,14 @@ export default function App() {
             <span className="nav-icon">{item.icon}</span>{item.label}
           </button>
         ))}
+        {isAdmin && (
+          <button className={screen === 'owner' ? 'active' : ''} onClick={() => navigate('owner')}>
+            <span className="nav-icon">⬛</span>Owner
+          </button>
+        )}
+        <button className={screen === 'settings' ? 'active' : ''} onClick={() => navigate('settings')}>
+          <span className="nav-icon">⚙</span>Settings
+        </button>
       </nav>
 
       <Toast message={toastMessage} />
