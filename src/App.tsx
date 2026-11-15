@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { feedAudio } from './lib/audioEngine'
+import { addStory, claimCoins, createTicket, fetchCoins, fetchConversations, fetchRepostedIds, fetchSavedIds, fetchStories, fetchThread, fetchTickets, onNewMessage, sendMessage as postMessage, setReposted, setSaved, timeAgo, type StoryRow, type TicketRow } from './lib/social'
 
 /* ------------------------------------------------------------------ */
 /* Types & data                                                        */
@@ -64,7 +65,6 @@ type Clip = {
   originalHandle?: string
 }
 
-type Comment = { id: string; author: string; initials: string; time: string; text: string; likes: number }
 type Conversation = { 
   id: string; 
   name: string; 
@@ -80,7 +80,7 @@ type Conversation = {
   verified?: boolean;
 }
 type Attachment = { id: string; type: 'image' | 'video' | 'file'; url: string; name?: string; size?: number; thumbnail?: string }
-type Story = { id: string; name: string; initials: string; image: string; caption: string; time: string }
+type Story = { id: string; name: string; initials: string; image: string; caption: string; time: string; video?: string }
 type Sound = { 
   id: string; 
   title: string; 
@@ -116,17 +116,6 @@ type BlockedUser = {
   initials: string; 
   avatar?: string | null;
   blockedAt: string;
-}
-
-/* Comment reply types */
-type CommentReply = { 
-  id: string; 
-  commentId: string; 
-  author: string; 
-  initials: string; 
-  time: string; 
-  text: string; 
-  likes: number;
 }
 
 /* Future types - reserved for upcoming features */
@@ -199,6 +188,15 @@ const NAV_MOBILE: { id: ScreenId; label: string; icon: string; create?: boolean 
   { id: 'profile', label: 'Profile', icon: '◉' },
 ]
 
+/* Line icons for the phone bottom nav (see visual-app.html). */
+const NAV_ICONS: Record<string, ReactNode> = {
+  home: <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" /></svg>,
+  discover: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /></svg>,
+  create: <svg viewBox="0 0 24 24" style={{ strokeWidth: 2.4 }}><path d="M12 5v14M5 12h14" /></svg>,
+  message: <svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z" /></svg>,
+  profile: <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c1-4 4-6 8-6s7 2 8 6" /></svg>,
+}
+
 const discoverCards = [
   { title: 'One-pan, no plans', meta: 'Food · 24.6K new views', image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=700&q=80', alt: 'Colorful lunch on a table' },
   { title: 'Quiet places club', meta: 'Outdoors · 18.2K videos', image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=700&q=80', alt: 'Mountain lake' },
@@ -209,6 +207,8 @@ const discoverCards = [
   { title: 'Take the scenic route', meta: 'Travel · 4,521 videos', image: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=700&q=80', alt: 'A mountain valley' },
   { title: 'Little things lately', meta: 'Everyday · 3,940 videos', image: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=700&q=80', alt: 'Flowers in bright sunlight' },
 ]
+
+const DISCOVER_CHIPS = ['For you', 'Food', 'Travel', 'Outdoors', 'Design', 'Daily life', 'Creative']
 
 const trends = [
   { tag: 'little rituals', count: '12.8K videos', growth: '+18%' },
@@ -289,7 +289,7 @@ const starterConversations: Conversation[] = [
   },
   { 
     id: 'group1', 
-    name: 'Weekend Crew 🏕️', 
+    name: 'Weekend Crew 🝕︝', 
     initials: 'WC', 
     handle: 'group',
     preview: 'Ari: Who\'s down for Saturday hike?', 
@@ -314,20 +314,29 @@ const starterConversations: Conversation[] = [
     pinned: false,
   },
 ]
+const demoStories: Story[] = [
 
-const starterComments: Comment[] = [
-  { id: 'c1', author: 'Sofia Kim', initials: 'SK', time: '2h', text: 'This looks unreal. Adding it to my weekend list.', likes: 248 },
-  { id: 'c2', author: 'Ari Rivera', initials: 'AR', time: '1h', text: 'The quiet spots always end up being the best ones.', likes: 96 },
-  { id: 'c3', author: 'Nico Lane', initials: 'NL', time: '44m', text: 'Where was this trail?', likes: 31 },
-]
-
-const stories: Story[] = [
   { id: 'you', name: 'Your story', initials: 'MC', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80', caption: 'A little moment from today.', time: 'just now' },
   { id: 's1', name: 'Jonah', initials: 'JL', image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80', caption: 'Trail treats and thin air.', time: '3 hours ago' },
   { id: 's2', name: 'Sofia', initials: 'SK', image: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=120&q=80', caption: 'New palette, same chaos.', time: '2 hours ago' },
   { id: 's3', name: 'Ari', initials: 'AR', image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&q=80', caption: 'Blue hour is undefeated.', time: '5 hours ago' },
   { id: 's4', name: 'Nia', initials: 'NC', image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=120&q=80', caption: 'Lunch in ten minutes.', time: '1 hour ago' },
 ]
+
+function toStoryList(rows: StoryRow[]): Story[] {
+  return rows.map((row) => {
+    const name = row.profiles?.username ?? 'user'
+    return {
+      id: row.id,
+      name,
+      initials: name.slice(0, 2).toUpperCase(),
+      image: row.media_url,
+      caption: row.text || 'A moment from today.',
+      time: timeAgo(row.created_at),
+      video: row.kind === 'video' ? row.media_url : undefined,
+    }
+  })
+}
 
 const sounds: Sound[] = [
   { id: 'snd1', title: 'Original sound', artist: 'Jonah Lee', usage: '12.4K videos', cover: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=200&q=80' },
@@ -371,19 +380,19 @@ const videoEffects: VideoEffect[] = [
   { id: 'cinematic', name: 'Cinematic', icon: '🎬', category: 'visual', shader: 'contrast(1.2) saturate(1.1) brightness(0.95)' },
   { id: 'bw', name: 'B&W', icon: '⚫', category: 'visual', shader: 'grayscale(1) contrast(1.15)' },
   { id: 'warm', name: 'Warm', icon: '🌅', category: 'visual', shader: 'sepia(0.2) saturate(1.2) brightness(1.05)' },
-  { id: 'cool', name: 'Cool', icon: '❄️', category: 'visual', shader: 'hue-rotate(180deg) saturate(1.1)' },
+  { id: 'cool', name: 'Cool', icon: '❄︝', category: 'visual', shader: 'hue-rotate(180deg) saturate(1.1)' },
   { id: 'vhs', name: 'VHS', icon: '📼', category: 'visual', shader: 'contrast(1.3) brightness(0.9) saturate(0.8)' },
-  { id: 'dreamy', name: 'Dreamy', icon: '☁️', category: 'visual', shader: 'blur(0.5px) brightness(1.1) saturate(1.1)' },
+  { id: 'dreamy', name: 'Dreamy', icon: '☝︝', category: 'visual', shader: 'blur(0.5px) brightness(1.1) saturate(1.1)' },
   { id: 'smooth', name: 'Smooth Skin', icon: '✨', category: 'beauty', shader: 'blur(0.3px) brightness(1.05)' },
-  { id: 'bright', name: 'Bright Eyes', icon: '👁️', category: 'beauty', shader: 'brightness(1.15) contrast(1.1)' },
+  { id: 'bright', name: 'Bright Eyes', icon: '👝︝', category: 'beauty', shader: 'brightness(1.15) contrast(1.1)' },
   { id: 'glow', name: 'Glow', icon: '✨', category: 'beauty', shader: 'brightness(1.1) saturate(1.2) contrast(1.05)' },
   { id: 'retouch', name: 'Retouch', icon: '🎨', category: 'beauty', shader: 'blur(0.4px) brightness(1.08)' },
   { id: 'mirror', name: 'Mirror', icon: '🪞', category: 'fun', shader: 'scaleX(-1)' },
   { id: 'kaleidoscope', name: 'Kaleidoscope', icon: '🔮', category: 'fun', shader: 'hue-rotate(90deg) saturate(1.5)' },
   { id: 'glitch', name: 'Glitch', icon: '📺', category: 'fun', shader: 'hue-rotate(45deg) contrast(1.4)' },
   { id: 'invert', name: 'Invert', icon: '🌈', category: 'fun', shader: 'invert(1) hue-rotate(180deg)' },
-  { id: 'zoom', name: 'Zoom', icon: '🔍', category: 'transition', shader: 'scale(1.1)' },
-  { id: 'pan', name: 'Pan', icon: '↔️', category: 'transition', shader: 'translateX(10%)' },
+  { id: 'zoom', name: 'Zoom', icon: '🔝', category: 'transition', shader: 'scale(1.1)' },
+  { id: 'pan', name: 'Pan', icon: '↔︝', category: 'transition', shader: 'translateX(10%)' },
   { id: 'spin', name: 'Spin', icon: '🔄', category: 'transition', shader: 'rotate(5deg)' },
   { id: 'greenscreen', name: 'Green Screen', icon: '🟢', category: 'green-screen', shader: 'none' },
 ]
@@ -401,6 +410,61 @@ const peopleFollowers = [
 ]
 
 const chartBars = [34, 49, 42, 63, 55, 77, 66, 91, 72, 100, 83, 94]
+
+type LiveRoom = {
+  id: string
+  name: string
+  handle: string
+  initials: string
+  color: string
+  title: string
+  viewers: number
+  image: string
+}
+
+const liveRooms: LiveRoom[] = [
+  { id: 'bluehour', name: 'Ari Rivera', handle: 'ari.outside', initials: 'AR', color: '#3b73f2', title: 'Blue hour walk, ask me anything', viewers: 1240, image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80' },
+  { id: 'studio', name: 'Sofia Kim', handle: 'sofia.draws', initials: 'SK', color: '#7a4fd6', title: 'Sketching the skyline, live', viewers: 860, image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=900&q=80' },
+  { id: 'kitchen', name: 'Nico Lane', handle: 'nico.lane', initials: 'NL', color: '#d98a1f', title: 'Dinner for six, come hang', viewers: 412, image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=900&q=80' },
+  { id: 'trail', name: 'Jonah Lee', handle: 'jonah.lee', initials: 'JL', color: '#1f9d7a', title: 'Ridge line, golden hour', viewers: 233, image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=900&q=80' },
+]
+
+const liveChatSeed = [
+  { id: 1, name: 'sofia.draws', text: 'This view is incredible!' },
+  { id: 2, name: 'jonah.lee', text: 'Adding this spot to my list.' },
+  { id: 3, name: 'nico.lane', text: 'Stay for the sunset ??' },
+  { id: 4, name: 'jules.walker', text: 'What lens are you using?' },
+]
+
+const LIVE_GIFTS = [
+  { name: 'Rose', emoji: '??', cost: 1 },
+  { name: 'Heart', emoji: '??', cost: 5 },
+  { name: 'Coffee', emoji: '?', cost: 10 },
+  { name: 'Rocket', emoji: '??', cost: 50 },
+  { name: 'Crown', emoji: '??', cost: 100 },
+]
+
+const LIVE_VIEWERS = [
+  { name: 'Lena Park', handle: 'lenapark' },
+  { name: 'Jo Reyes', handle: 'joreyes' },
+  { name: 'Priya Nair', handle: 'priyan' },
+  { name: 'Sam Ortiz', handle: 'samcooks' },
+  { name: 'Alex Kim', handle: 'alexkim' },
+  { name: 'Noor Ali', handle: 'noorali' },
+  { name: 'Theo Brandt', handle: 'theobrandt' },
+  { name: 'Mina Cho', handle: 'minacho' },
+]
+
+function giftEmoji(name: string) {
+  return LIVE_GIFTS.find((gift) => gift.name === name)?.emoji ?? '??'
+}
+
+const inboxActivity = [
+  { id: 1, name: 'Eddy Hutt', text: 'liked your video �Cabin, no signal�', time: '2m', followBack: false },
+  { id: 2, name: 'Lena Park', text: 'started following you', time: '1h', followBack: true },
+  { id: 3, name: 'Priya Nair', text: 'commented: �Saving this for the weekend�', time: '3h', followBack: false },
+  { id: 4, name: 'Jo Reyes', text: 'mentioned you in a comment', time: 'Yesterday', followBack: false },
+]
 
 const topVideos = [
   { title: 'The long way home', when: 'Posted 2 days ago', views: '24.8K', image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=120&q=80' },
@@ -431,6 +495,17 @@ function toErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
+// Build a sound page for a clip whose audio track is not in the sound catalogue
+function fallbackSound(clip: Clip): Sound {
+  return {
+    id: `sound-${clip.id}`,
+    title: clip.audio || 'Original audio',
+    artist: clip.creator,
+    usage: '0:24',
+    cover: clip.image,
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Small shared components                                             */
 /* ------------------------------------------------------------------ */
@@ -455,6 +530,15 @@ function Avatar({ initials, src, size }: { initials: string; src?: string | null
   const style = size ? { width: size, height: size } : undefined
   if (src) return <span className="avatar" style={style}><img src={src} alt="" /></span>
   return <span className="avatar" style={style}>{initials}</span>
+}
+
+// Verified tick shown next to creator names everywhere (feed, live, messages, stories, profile)
+function Verified() {
+  return (
+    <span className="vb" role="img" aria-label="Verified">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+    </span>
+  )
 }
 
 function Modal({ open, onClose, labelledBy, className, children }: {
@@ -503,14 +587,14 @@ function Toast({ message }: { message: string }) {
 
 /* ============ EMOJI PICKER ============ */
 const EMOJI_CATEGORIES = [
-  { name: 'Smileys', emojis: ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠'] },
-  { name: 'People', emojis: ['👋','🤚','🖐️','✋','🖖','👌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🙏','🤝','👂','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄','👶','🧒','👦','👧','🧑','👱','👨','🧔','👩','🧓','👴','👵','🙍','🙎','🙅','🙆','💁','🙋','🙇','🤦','🤷','🧑‍⚕️','🧑‍🎓','🧑‍🏫','🧑‍⚖️','🧑‍🌾','🧑‍🍳','🧑‍🔧','🧑‍🏭','🧑‍💼','🧑‍🔬','🧑‍💻','🧑‍🎤','🧑‍🎨','🧑‍✈️','🧑‍🚀','🧑‍🚒','👮','🕵️','💂','🥷','👷','🤴','👸','👳','👲','🧕','🤵','👰','🤰','🤱','👼','🎅','🤶','🦸','🦹','🧙','🧚','🧛','🧜','🧝','🧞','🧟','💆','💇','🚶','🏃','💃','🕺','🕴️','👯','🧖','🧗','🤺','🏇','⛷️','🏂','🏌️','🏄','🏊','⛹️','🏋️','🚴','🚵','🤸','🤼','🤽','🤾','🤹','🧘','🛀','🛌','🤔','🤥','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
-  { name: 'Nature', emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🪰','🪲','🪳','🦟','🦗','🕷️','🦂','🦠','💐','🌸','💮','🏵️','🌹','🥀','🌺','🌻','🌼','🌷','🌱','🪴','🌲','🌳','🌴','🌵','🌾','🌿','☘️','🍀','🍁','🍂','🍃','🍄','🍇','🍈','🍉','🍊','🍋','🍌','🍍','🥭','🍎','🍏','🍐','🍑','🍒','🍓','🫐','🥝','🍅','🥥','🥑','🍆','🥔','🥕','🌽','🌶️','🫑','🥒','🥬','🥦','🧄','🧅','🍄','🥜','🫘'] },
-  { name: 'Food', emojis: ['🍕','🍔','🍟','🍗','🍖','🥩','🥓','🍞','🥖','🥨','🧀','🥚','🍳','🥘','🍲','🥣','🥗','🍿','🧈','🧂','🥫','🍱','🍘','🍙','🍚','🍛','🍜','🍝','🍠','🍢','🍣','🍤','🍥','🥮','🍡','🥟','🥠','🥡','🍦','🍧','🍨','🍩','🍪','🎂','🍰','🧁','🥧','🍫','🍬','🍭','🍮','🍯','🍼','🥛','☕','🍵','🧃','🥤','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧋','🍾','🧊'] },
-  { name: 'Activity', emojis: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛷','⛸️','🥌','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','⛹️','🤺','🤾','🏌️','🏇','🧘','🏄','🏊','🚣','🧗','🚴','🚵','🏎️','🏍️','🏁','🎿','🛷','🥌','🎯','🎮','🕹️','🎰','🎲','🧩','🧸','🪅','🪆','🃏','🀄','🎴','🎭','🖼️','🎨','🎪','🎟️','🎫'] },
-  { name: 'Travel', emojis: ['🚗','🚕','🚙','🚌','🚎','🏎️','🏍️','🛵','🦽','🦼','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','🛢️','⛽','🚨','🚥','🚦','🛑','🚧','⚓','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🛰️','🚀','🛸','🛎️','🧳','🎒','🏝️','🏖️','🏜️','🌋','⛰️','🏔️','🗻','🏕️','⛺','🛖','🏠','🏡','🏘️','🏚️','🏗️','🏭','🏢','🏬','🏣','🏤','🏥','🏦','🏨','🏪','🏫','🏩','💒','🏛️','⛪','🕌','🕍','🛕','⛩️','🕋','⛲','⛱️','🗽','🗼','🏰','🏯','🏟️','🎡','🎢','🎠','⛱️','🏖️','🏝️','🏞️','🌅','🌄','🌠','🎆','🎇','🌇','🌆','🌃','🌌','🌉','🌁'] },
-  { name: 'Objects', emojis: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','💽','💾','💿','📀','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🎙️','🎚️','🎛️','🧭','⏱️','⏲️','⏰','🕰️','⌛','⏳','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵','💴','💶','💷','🪙','💰','💳','🧾','💹','✉️','📧','📨','📩','📤','📥','📦','📫','📪','📬','📭','📮','📝','📋','📄','📃','📑','📊','📈','📉','📂','📁','🗂️','📅','📆','🗒️','🗓️','📇','📈','📉','📊','📋','📌','📍','📎','🖇️','📏','📐','✂️','🗃️','🗄️','🗑️','🔒','🔓','🔏','🔐','🔑','🗝️','🔨','🪓','⛏️','⚒️','🛠️','🗡️','⚔️','💣','🪃','🏹','🛡️','🪚','🔧','🔩','⚙️','🗜️','⚖️','🦯','🔗','⛓️','🧰','🧲','🧪','🧫','🧬','🔬','🔭','📡','💉','💊','🩹','🩺','🩻','🚪','🛏️','🛋️','🪑','🚽','🪠','🚿','🛁','🪒','🧴','🧷','🧹','🧺','🧻','🧼','🧽','🧯','🛒'] },
-  { name: 'Symbols', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🔯','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊗️','㊙️','🈳','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','🚫','🚷','🚯','🚳','🚭','🚱','🔞','📵','🚸','⛔','✳️','❌','⭕','🛑','🛐','🛤️','🛣️','🗾','🎌','🏳️','🏴','🏳️‍🌈','🏳️‍⚧️','🏁','🚩','🏴‍☠️','🇺🇳','🇦🇫','🇦🇽','🇦🇱','🇩🇿','🇦🇸','🇦🇩','🇦🇴','🇦🇮','🇦🇶','🇦🇬','🇦🇷','🇦🇲','🇦🇼','🇦🇺','🇦🇹','🇦🇿','🇧🇸','🇧🇭','🇧🇩','🇧🇧','🇧🇾','🇧🇪','🇧🇿','🇧🇯','🇧🇲','🇧🇹','🇧🇴','🇧🇦','🇧🇼','🇧🇷','🇮🇴','🇻🇬','🇧🇳','🇧🇬','🇧🇫','🇧🇮','🇨🇻','🇰🇭','🇨🇲','🇨🇦','🇰🇾','🇨🇫','🇹🇩','🇨🇱','🇨🇳','🇨🇽','🇨🇨','🇨🇴','🇰🇲','🇨🇬','🇨🇩','🇨🇰','🇨🇷','🇭🇷','🇨🇺','🇨🇼','🇨🇾','🇨🇿','🇨🇮','🇩🇰','🇩🇯','🇩🇲','🇩🇴','🇪🇨','🇪🇬','🇸🇻','🇬🇶','🇪🇷','🇪🇪','🇸🇿','🇪🇹','🇫🇰','🇫🇴','🇫🇯','🇫🇮','🇫🇷','🇬🇫','🇵🇫','🇹🇫','🇬🇦','🇬🇲','🇬🇪','🇩🇪','🇬🇭','🇬🇮','🇬🇷','🇬🇱','🇬🇩','🇬🇵','🇬🇺','🇬🇹','🇬🇬','🇬🇳','🇬🇼','🇬🇾','🇭🇹','🇭🇳','🇭🇰','🇭🇺','🇮🇸','🇮🇳','🇮🇩','🇮🇷','🇮🇶','🇮🇪','🇮🇲','🇮🇱','🇮🇹','🇯🇲','🇯🇵','🇯🇪','🇯🇴','🇰🇿','🇰🇪','🇰🇮','🇽🇰','🇰🇼','🇰🇬','🇱🇦','🇱🇻','🇱🇧','🇱🇸','🇱🇷','🇱🇾','🇱🇮','🇱🇹','🇱🇺','🇲🇴','🇲🇰','🇲🇬','🇲🇼','🇲🇾','🇲🇻','🇲🇱','🇲🇹','🇲🇭','🇲🇶','🇲🇷','🇲🇺','🇾🇹','🇲🇽','🇫🇲','🇲🇩','🇲🇨','🇲🇳','🇲🇪','🇲🇸','🇲🇦','🇲🇿','🇲🇲','🇳🇦','🇳🇷','🇳🇵','🇳🇱','🇳🇨','🇳🇿','🇳🇮','🇳🇪','🇳🇬','🇳🇺','🇳🇫','🇲🇵','🇳🇴','🇴🇲','🇵🇰','🇵🇼','🇵🇸','🇵🇦','🇵🇬','🇵🇾','🇵🇪','🇵🇭','🇵🇳','🇵🇱','🇵🇹','🇵🇷','🇶🇦','🇷🇪','🇷🇴','🇷🇸','🇷🇼','🇧🇱','🇸🇭','🇰🇳','🇱🇨','🇵🇲','🇻🇨','🇼🇸','🇸🇲','🇸🇹','🇸🇦','🇸🇳','🇷🇸','🇸🇨','🇸🇱','🇸🇬','🇸🇽','🇸🇰','🇸🇮','🇸🇧','🇸🇴','🇿🇦','🇬🇸','🇸🇸','🇪🇸','🇱🇰','🇸🇩','🇸🇷','🇸🇯','🇸🇪','🇨🇭','🇸🇾','🇹🇼','🇹🇯','🇹🇿','🇹🇭','🇹🇱','🇹🇬','🇹🇰','🇹🇴','🇹🇹','🇹🇳','🇹🇷','🇹🇲','🇹🇨','🇹🇻','🇺🇬','🇺🇦','🇦🇪','🇬🇧','🇺🇸','🇺🇾','🇺🇿','🇻🇺','🇻🇦','🇻🇪','🇻🇳','🇼🇫','🇪🇭','🇾🇪','🇿🇲','🇿🇼'] },
+  { name: 'Smileys', emojis: ['😀','😃','😄','😝','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😝','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧝','🤓','😎','🤩','🥳','😝','😒','😞','😔','😟','😕','🙝','☹︝','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😝','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤝','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠'] },
+  { name: 'People', emojis: ['👋','🤚','🖝︝','✋','🖖','👌','🤝','✌︝','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝︝','👝','👎','✊','👊','🤛','🤜','👝','🙌','👝','🤲','🙝','🤝','👂','👃','🧠','🫀','🫝','🦷','🦴','👀','👝︝','👅','👄','👶','🧒','👦','👧','🧑','👱','👨','🧔','👩','🧓','👴','👵','🙝','🙎','🙅','🙆','💝','🙋','🙇','🤦','🤷','🧑”⚕︝','🧑”🎓','🧑”🝫','🧑”⚖︝','🧑”🌾','🧑”🝳','🧑”🔧','🧑”🝭','🧑”💼','🧑”🔬','🧑”💻','🧑”🎤','🧑”🎨','🧑”✈︝','🧑”🚀','🧑”🚒','👮','🕵︝','💂','🥷','👷','🤴','👸','👳','👲','🧕','🤵','👰','🤰','🤱','👼','🎅','🤶','🦸','🦹','🧙','🧚','🧛','🧜','🧝','🧞','🧟','💆','💇','🚶','🝃','💃','🕺','🕴︝','👯','🧖','🧗','🤺','🝇','⛷︝','🝂','🝌︝','🝄','🝊','⛹︝','🝋︝','🚴','🚵','🤸','🤼','🤽','🤾','🤹','🧘','🛀','🛌','🤔','🤥','🤨','😝','😑','😶','😝','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧝','😕','😟','🙝','☹︝','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','😤','😡','😠','🤬','😈','👿','💀','☠︝','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
+  { name: 'Nature', emojis: ['🝶','🝱','🝭','🝹','🝰','🦊','🝻','🝼','🝻”❄︝','🝨','🝯','🦝','🝮','🝷','🝽','🝸','🝵','🙈','🙉','🙊','🝒','🝔','🝧','🝦','🝤','🝣','🝥','🦆','🦅','🦉','🦇','🝺','🝗','🝴','🦄','🝝','🝛','🦋','🝌','🝞','🝜','🪰','🪲','🪳','🦟','🦗','🕷︝','🦂','🦠','💝','🌸','💮','🝵︝','🌹','🥀','🌺','🌻','🌼','🌷','🌱','🪴','🌲','🌳','🌴','🌵','🌾','🌿','☘︝','🝀','🝝','🝂','🝃','🝄','🝇','🝈','🝉','🝊','🝋','🝌','🝝','🥭','🝎','🝝','🝝','🝑','🝒','🝓','🫝','🥝','🝅','🥥','🥑','🝆','🥔','🥕','🌽','🌶︝','🫑','🥒','🥬','🥦','🧄','🧅','🝄','🥜','🫘'] },
+  { name: 'Food', emojis: ['🝕','🝔','🝟','🝗','🝖','🥩','🥓','🝞','🥖','🥨','🧀','🥚','🝳','🥘','🝲','🥣','🥗','🝿','🧈','🧂','🥫','🝱','🝘','🝙','🝚','🝛','🝜','🝝','🝠','🝢','🝣','🝤','🝥','🥮','🝡','🥟','🥠','🥡','🝦','🝧','🝨','🝩','🝪','🎂','🝰','🧝','🥧','🝫','🝬','🝭','🝮','🝯','🝼','🥛','☕','🝵','🧃','🥤','🝶','🝺','🝻','🥂','🝷','🥃','🝸','🝹','🧋','🝾','🧊'] },
+  { name: 'Activity', emojis: ['⚽','🝀','🝈','⚾','🥎','🎾','🝝','🝉','🥝','🎱','🪀','🝓','🝸','🝒','🝑','🥝','🝝','🪃','🥅','⛳','🪝','🝹','🎣','🤿','🥊','🥋','🎽','🛹','🛷','⛸︝','🥌','🎿','⛷︝','🝂','🪂','🝋︝','🤼','🤸','⛹︝','🤺','🤾','🝌︝','🝇','🧘','🝄','🝊','🚣','🧗','🚴','🚵','🝎︝','🝝︝','🝝','🎿','🛷','🥌','🎯','🎮','🕹︝','🎰','🎲','🧩','🧸','🪅','🪆','🃝','🀄','🎴','🎭','🖼︝','🎨','🎪','🎟︝','🎫'] },
+  { name: 'Travel', emojis: ['🚗','🚕','🚙','🚌','🚎','🝎︝','🝝︝','🛵','🦽','🦼','🛺','🚲','🛴','🛹','🛼','🚝','🛣︝','🛤︝','🛢︝','⛽','🚨','🚥','🚦','🛑','🚧','⚓','⛵','🛶','🚤','🛳︝','⛴︝','🛥︝','🚢','✈︝','🛩︝','🛫','🛬','🪂','💺','🛰︝','🚀','🛸','🛎︝','🧳','🎒','🝝︝','🝖︝','🝜︝','🌋','⛰︝','🝔︝','🗻','🝕︝','⛺','🛖','🝠','🝡','🝘︝','🝚︝','🝗︝','🝭','🝢','🝬','🝣','🝤','🝥','🝦','🝨','🝪','🝫','🝩','💒','🝛︝','⛪','🕌','🕝','🛕','⛩︝','🕋','⛲','⛱︝','🗽','🗼','🝰','🝯','🝟︝','🎡','🎢','🎠','⛱︝','🝖︝','🝝︝','🝞︝','🌅','🌄','🌠','🎆','🎇','🌇','🌆','🌃','🌌','🌉','🌝'] },
+  { name: 'Objects', emojis: ['⌚','📱','📲','💻','⌨︝','🖥︝','🖨︝','🖱︝','🖲︝','💽','💾','💿','📀','📷','📸','📹','🎥','📽︝','🎞︝','📞','☎︝','📟','📠','📺','📻','🎙︝','🎚︝','🎛︝','🧭','❱︝','❲︝','❰','🕰︝','⌛','❳','🔋','🔌','💡','🔦','🕯︝','🪔','🧯','🛢︝','💸','💵','💴','💶','💷','🪙','💰','💳','🧾','💹','✉︝','📧','📨','📩','📤','📥','📦','📫','📪','📬','📭','📮','📝','📋','📄','📃','📑','📊','📈','📉','📂','📝','🗂︝','📅','📆','🗒︝','🗓︝','📇','📈','📉','📊','📋','📌','📝','📎','🖇︝','📝','📝','✂︝','🗃︝','🗄︝','🗑︝','🔒','🔓','🔝','🔝','🔑','🗝︝','🔨','🪓','⛝︝','⚒︝','🛠︝','🗡︝','⚔︝','💣','🪃','🝹','🛡︝','🪚','🔧','🔩','⚙︝','🗜︝','⚖︝','🦯','🔗','⛓︝','🧰','🧲','🧪','🧫','🧬','🔬','🔭','📡','💉','💊','🩹','🩺','🩻','🚪','🛝︝','🛋︝','🪑','🚽','🪠','🚿','🛝','🪒','🧴','🧷','🧹','🧺','🧻','🧼','🧽','🧯','🛒'] },
+  { name: 'Symbols', emojis: ['❤︝','🧡','💛','💚','💙','💜','🖤','🤝','🤎','💔','❣︝','💕','💞','💓','💗','💖','💘','💝','💟','☮︝','✝︝','☪︝','🕉︝','☸︝','✡︝','🔯','🕎','☯︝','☦︝','🛝','⛎','♈','♉','♊','♋','♌','♝','♎','♝','♝','♑','♒','♓','🔯','🆔','⚛︝','🉑','☢︝','☣︝','📴','📳','🈶','🈚','🈸','🈺','🈷︝','✴︝','🆚','💮','🉝','㊗︝','㊙︝','🈳','🈲','🅰︝','🅱︝','🆎','🆑','🅾︝','🆘','🚫','🚷','🚯','🚳','🚭','🚱','🔞','📵','🚸','⛔','✳︝','❌','⭕','🛑','🛝','🛤︝','🛣︝','🗾','🎌','🝳︝','🝴','🝳︝”🌈','🝳︝”⚧︝','🝝','🚩','🝴”☠︝','🇺🇳','🇦🇫','🇦🇽','🇦🇱','🇩🇿','🇦🇸','🇦🇩','🇦🇴','🇦🇮','🇦🇶','🇦🇬','🇦🇷','🇦🇲','🇦🇼','🇦🇺','🇦🇹','🇦🇿','🇧🇸','🇧🇭','🇧🇩','🇧🇧','🇧🇾','🇧🇪','🇧🇿','🇧🇯','🇧🇲','🇧🇹','🇧🇴','🇧🇦','🇧🇼','🇧🇷','🇮🇴','🇻🇬','🇧🇳','🇧🇬','🇧🇫','🇧🇮','🇨🇻','🇰🇭','🇨🇲','🇨🇦','🇰🇾','🇨🇫','🇹🇩','🇨🇱','🇨🇳','🇨🇽','🇨🇨','🇨🇴','🇰🇲','🇨🇬','🇨🇩','🇨🇰','🇨🇷','🇭🇷','🇨🇺','🇨🇼','🇨🇾','🇨🇿','🇨🇮','🇩🇰','🇩🇯','🇩🇲','🇩🇴','🇪🇨','🇪🇬','🇸🇻','🇬🇶','🇪🇷','🇪🇪','🇸🇿','🇪🇹','🇫🇰','🇫🇴','🇫🇯','🇫🇮','🇫🇷','🇬🇫','🇵🇫','🇹🇫','🇬🇦','🇬🇲','🇬🇪','🇩🇪','🇬🇭','🇬🇮','🇬🇷','🇬🇱','🇬🇩','🇬🇵','🇬🇺','🇬🇹','🇬🇬','🇬🇳','🇬🇼','🇬🇾','🇭🇹','🇭🇳','🇭🇰','🇭🇺','🇮🇸','🇮🇳','🇮🇩','🇮🇷','🇮🇶','🇮🇪','🇮🇲','🇮🇱','🇮🇹','🇯🇲','🇯🇵','🇯🇪','🇯🇴','🇰🇿','🇰🇪','🇰🇮','🇽🇰','🇰🇼','🇰🇬','🇱🇦','🇱🇻','🇱🇧','🇱🇸','🇱🇷','🇱🇾','🇱🇮','🇱🇹','🇱🇺','🇲🇴','🇲🇰','🇲🇬','🇲🇼','🇲🇾','🇲🇻','🇲🇱','🇲🇹','🇲🇭','🇲🇶','🇲🇷','🇲🇺','🇾🇹','🇲🇽','🇫🇲','🇲🇩','🇲🇨','🇲🇳','🇲🇪','🇲🇸','🇲🇦','🇲🇿','🇲🇲','🇳🇦','🇳🇷','🇳🇵','🇳🇱','🇳🇨','🇳🇿','🇳🇮','🇳🇪','🇳🇬','🇳🇺','🇳🇫','🇲🇵','🇳🇴','🇴🇲','🇵🇰','🇵🇼','🇵🇸','🇵🇦','🇵🇬','🇵🇾','🇵🇪','🇵🇭','🇵🇳','🇵🇱','🇵🇹','🇵🇷','🇶🇦','🇷🇪','🇷🇴','🇷🇸','🇷🇼','🇧🇱','🇸🇭','🇰🇳','🇱🇨','🇵🇲','🇻🇨','🇼🇸','🇸🇲','🇸🇹','🇸🇦','🇸🇳','🇷🇸','🇸🇨','🇸🇱','🇸🇬','🇸🇽','🇸🇰','🇸🇮','🇸🇧','🇸🇴','🇿🇦','🇬🇸','🇸🇸','🇪🇸','🇱🇰','🇸🇩','🇸🇷','🇸🇯','🇸🇪','🇨🇭','🇸🇾','🇹🇼','🇹🇯','🇹🇿','🇹🇭','🇹🇱','🇹🇬','🇹🇰','🇹🇴','🇹🇹','🇹🇳','🇹🇷','🇹🇲','🇹🇨','🇹🇻','🇺🇬','🇺🇦','🇦🇪','🇬🇧','🇺🇸','🇺🇾','🇺🇿','🇻🇺','🇻🇦','🇻🇪','🇻🇳','🇼🇫','🇪🇭','🇾🇪','🇿🇲','🇿🇼'] },
 ]
 
 function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) {
@@ -649,7 +733,7 @@ function ConversationList({
               <div className="conversation-content">
                 <div className="conversation-header">
                   <div>
-                    <strong>{conv.name}</strong>
+            <strong>{conv.name}{conv.verified && <Verified />}</strong>
                     {conv.pinned && <span className="pin-badge" title="Pinned">📌</span>}
                     {conv.muted && <span className="mute-badge" title="Muted">🔕</span>}
                   </div>
@@ -762,7 +846,7 @@ function ChatScreen({
           {conversation.online && <span className="online-indicator" />}
         </button>
         <div className="chat-info" onClick={onProfileClick}>
-          <strong>{conversation.name}</strong>
+          <strong>{conversation.name}{conversation.verified && <Verified />}</strong>
           <small>{conversation.online ? 'Online' : `Last seen ${conversation.time}`}</small>
         </div>
         <div className="chat-actions">
@@ -819,7 +903,7 @@ function ChatScreen({
                             )}
                             {(att.type === 'file' || !att.url) && (
                               <div className="file-attachment">
-                                <span className="file-icon">{att.type === 'video' ? '🎬' : att.type === 'image' ? '🖼️' : '📄'}</span>
+                                <span className="file-icon">{att.type === 'video' ? '🎬' : att.type === 'image' ? '🖼︝' : '📄'}</span>
                                 <span className="file-name">{att.name || 'File'}</span>
                                 {att.size && <span className="file-size">{(att.size / 1024 / 1024).toFixed(1)} MB</span>}
                               </div>
@@ -833,7 +917,7 @@ function ChatScreen({
                       <time>{formatTime(msg.timestamp)}</time>
                       {isMine && (
                         <span className={`message-status${msg.status === 'read' ? ' read' : msg.status === 'delivered' ? ' delivered' : ''}`}>
-                          {msg.status === 'read' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : msg.status === 'sent' ? '✓' : '⏳'}
+                          {msg.status === 'read' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : msg.status === 'sent' ? '✓' : '❳'}
                         </span>
                       )}
                     </div>
@@ -902,7 +986,7 @@ function ChatScreen({
               <span>Camera</span>
             </button>
             <button className="attachment-option" onClick={() => notify('Location coming soon')}>
-              <span className="option-icon">📍</span>
+              <span className="option-icon">📝</span>
               <span>Location</span>
             </button>
             <button className="attachment-option" onClick={() => notify('Contact coming soon')}>
@@ -948,11 +1032,11 @@ function ChatScreen({
               <span>Pin conversation</span>
             </button>
             <button onClick={() => { onMoreAction('search'); setShowMoreMenu(false) }}>
-              <span>🔍</span>
+              <span>🔝</span>
               <span>Search in chat</span>
             </button>
             <button onClick={() => { onMoreAction('media'); setShowMoreMenu(false) }}>
-              <span>🖼️</span>
+              <span>🖼︝</span>
               <span>Media, links & docs</span>
             </button>
             <button onClick={() => { onMoreAction('notifications'); setShowMoreMenu(false) }}>
@@ -964,7 +1048,7 @@ function ChatScreen({
               <span>Block / Report</span>
             </button>
             <button onClick={() => { onMoreAction('delete'); setShowMoreMenu(false) }} className="destructive">
-              <span>🗑️</span>
+              <span>🗑︝</span>
               <span>Delete chat</span>
             </button>
           </div>
@@ -1092,7 +1176,12 @@ function SoundDetailModal({
 }) {
   if (!sound || !open) return null
 
-  const soundVideos = clips.filter((clip) => clip.audio.toLowerCase().includes(sound.title.toLowerCase()))
+  const soundVideos = (() => {
+    const matches = clips.filter((clip) => clip.audio.toLowerCase().includes(sound.title.toLowerCase()))
+    if (matches.length > 0) return matches
+    // Always show something: fall back to the rest of the feed
+    return clips.slice(0, 8)
+  })()
 
   return (
     <Modal open={open} onClose={onClose} labelledBy="sound-detail-title" className="sound-detail-card">
@@ -1265,60 +1354,337 @@ function BlockedUsersModal({ blockedUsers, open, onClose, onUnblock }: { blocked
   )
 }
 
-/* ============ COMMENT REPLIES ============ */
-function CommentRepliesComponent({ replies, onAddReply, onLikeReply, accountInitials, onOpenHashtag }: { replies: CommentReply[]; onAddReply: (text: string) => void; onLikeReply: (replyId: string) => void; accountInitials: string; onOpenHashtag: (hashtag: Hashtag) => void }) {
-  const [showReplies, setShowReplies] = useState(replies.length > 0)
-  const [replyText, setReplyText] = useState('')
 
-  const renderWithHashtags = (text: string) => {
-    return text.split(' ').map((word) => {
-      if (word.startsWith('#')) {
-        const tag = hashtags.find((h) => h.tag.toLowerCase() === word.toLowerCase())
-        return tag ? <button key={word} className="hashtag-link" onClick={(e) => { e.stopPropagation(); onOpenHashtag(tag) }}>{word}</button> : word
-      }
-      if (word.startsWith('@')) {
-        return <span key={word} className="mention-link">{word}</span>
-      }
-      return word
-    }).join(' ')
+/* ============ LIVE STREAM MODAL ============ */
+/* ============ COMMENTS SHEET (preview parity) ============ */
+type SheetComment = {
+  id: number
+  name: string
+  text: string
+  time: string
+  likes: number
+  liked?: boolean
+  fresh?: boolean
+  sticker?: string
+  open?: boolean
+  replies: SheetComment[]
+}
+
+const COMMENT_STICKERS = ['??', '??', '??', '??', '?', '??', '??', '??', '??', '??', '??', '??']
+
+const COMMENT_POOL: Array<{ name: string; text: string }> = [
+  { name: 'Jo Reyes', text: 'this made my day' },
+  { name: 'Priya Nair', text: 'Okay but where is this?? ??' },
+  { name: 'Sam Ortiz', text: 'the colors are unreal' },
+  { name: 'Lena Park', text: 'sending this to everyone I know' },
+  { name: 'Alex Kim', text: 'first time here and I am staying' },
+  { name: 'Noor Ali', text: 'the light!! ??' },
+]
+
+const COMMENT_PEOPLE = [
+  { handle: 'lenapark', name: 'Lena Park' },
+  { handle: 'joreyes', name: 'Jo Reyes' },
+  { handle: 'priyan', name: 'Priya Nair' },
+  { handle: 'samcooks', name: 'Sam Ortiz' },
+  { handle: 'mayamakes', name: 'Maya Chen' },
+  { handle: 'eddyhutt', name: 'Eddy Hutt' },
+]
+
+function seedComments(creator: string): SheetComment[] {
+  return [
+    {
+      id: 1,
+      name: 'Lena Park',
+      text: 'That light is unreal ??',
+      time: '12m',
+      likes: 148,
+      open: false,
+      replies: [
+        { id: 2, name: creator, text: '@lenapark thank you!! it only lasted ten minutes', time: '9m', likes: 36, replies: [] },
+        { id: 3, name: 'Jo Reyes', text: 'ten minutes well spent', time: '6m', likes: 12, replies: [] },
+      ],
+    },
+    {
+      id: 4,
+      name: 'Jo Reyes',
+      text: 'Where is this?',
+      time: '40m',
+      likes: 21,
+      open: false,
+      replies: [
+        { id: 5, name: 'Priya Nair', text: '@joreyes looks like the coast to me', time: '31m', likes: 5, replies: [] },
+      ],
+    },
+    { id: 6, name: 'Priya Nair', text: 'Saving this for the weekend', time: '1h', likes: 64, replies: [] },
+    { id: 7, name: 'Sam Ortiz', text: '', time: '1h', likes: 9, sticker: '??', replies: [] },
+  ]
+}
+
+function CommentsSheet({
+  clip,
+  open,
+  onClose,
+}: {
+  clip: Clip | null
+  open: boolean
+  onClose: () => void
+}) {
+  const [comments, setComments] = useState<SheetComment[]>(() => (clip ? seedComments(clip.creator) : []))
+  const [draft, setDraft] = useState('')
+  const [replyTo, setReplyTo] = useState<number | null>(null)
+  const [stickerOpen, setStickerOpen] = useState(false)
+  const [typing, setTyping] = useState('')
+  const [watchers, setWatchers] = useState(248)
+  const [nextId, setNextId] = useState(100)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!open || !clip) return
+    setComments(seedComments(clip.creator))
+    setDraft('')
+    setReplyTo(null)
+    setStickerOpen(false)
+    setTyping('')
+    setWatchers(200 + Math.floor(Math.random() * 120))
+  }, [clip?.id, clip?.creator, open])
+
+  // Simulated live activity while the sheet is open
+  useEffect(() => {
+    if (!open || !clip) return
+    let alive = true
+    let typingTimer = 0
+    let postTimer = 0
+
+    const tick = () => {
+      if (!alive) return
+      const person = COMMENT_POOL[Math.floor(Math.random() * COMMENT_POOL.length)]
+      setTyping(`${person.name.split(' ')[0]} is typing�`)
+      typingTimer = window.setTimeout(() => {
+        if (!alive) return
+        setTyping('')
+        setComments((current) => [
+          { id: Date.now(), name: person.name, text: person.text, time: 'now', likes: 0, fresh: true, replies: [] },
+          ...current,
+        ])
+        postTimer = window.setTimeout(tick, 5200)
+      }, 1500)
+    }
+
+    const first = window.setTimeout(tick, 2600)
+    const watch = window.setInterval(() => {
+      setWatchers((value) => Math.max(120, value + Math.round(Math.random() * 8 - 3)))
+    }, 2400)
+
+    return () => {
+      alive = false
+      window.clearTimeout(first)
+      window.clearTimeout(typingTimer)
+      window.clearTimeout(postTimer)
+      window.clearInterval(watch)
+    }
+  }, [open])
+
+  const total = (clip?.comments ?? 0) + comments.filter((comment) => comment.fresh).length
+
+  const post = (text: string, sticker?: string) => {
+    const body = text.trim()
+    if (!body && !sticker) return
+    const comment: SheetComment = {
+      id: nextId,
+      name: 'You',
+      text: replyTo ? body : body,
+      time: 'now',
+      likes: 0,
+      fresh: true,
+      sticker,
+      replies: [],
+    }
+    setNextId((value) => value + 1)
+    if (replyTo) {
+      setComments((current) =>
+        current.map((item) =>
+          item.id === replyTo ? { ...item, open: true, replies: [...item.replies, comment] } : item,
+        ),
+      )
+      setReplyTo(null)
+    } else {
+      setComments((current) => [comment, ...current])
+    }
+    setDraft('')
+    setStickerOpen(false)
   }
 
-  if (replies.length === 0 && !showReplies) {
-    return (
-      <button className="replies-toggle" onClick={() => setShowReplies(true)}>
-        View replies
-      </button>
+  const toggleLike = (id: number) => {
+    setComments((current) =>
+      current.map((comment) => {
+        if (comment.id === id) {
+          return { ...comment, liked: !comment.liked, likes: comment.likes + (comment.liked ? -1 : 1) }
+        }
+        return {
+          ...comment,
+          replies: comment.replies.map((reply) =>
+            reply.id === id ? { ...reply, liked: !reply.liked, likes: reply.likes + (reply.liked ? -1 : 1) } : reply,
+          ),
+        }
+      }),
     )
   }
 
+  const suggestions = (() => {
+    const match = /@(\w*)$/.exec(draft)
+    if (!match) return []
+    const query = match[1].toLowerCase()
+    return COMMENT_PEOPLE.filter((person) => person.handle.startsWith(query) || person.name.toLowerCase().startsWith(query)).slice(0, 4)
+  })()
+
+  const renderRow = (comment: SheetComment, top: boolean) => (
+    <div className={`cm${top ? '' : ' rep'}${comment.fresh ? ' new' : ''}`} key={`${top ? 't' : 'r'}-${comment.id}`}>
+      <Avatar initials={initialsOf(comment.name)} size={top ? 36 : 28} />
+      <div className="cb">
+        <div>
+          <b>{comment.name}</b>
+          {comment.name === clip?.creator && <span className="crt">Creator</span>}
+          <small>{comment.time}</small>
+        </div>
+        {comment.sticker ? <div className="cst">{comment.sticker}</div> : <p>{comment.text}</p>}
+        <div className="cact">
+          <button
+            type="button"
+            className={comment.liked ? 'on' : ''}
+            aria-pressed={!!comment.liked}
+            aria-label={`Like comment by ${comment.name}`}
+            onClick={() => toggleLike(comment.id)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill={comment.liked ? 'currentColor' : 'none'}><path d="M12 20.5S3.5 15 3.5 9A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.5 2c0 6-8.5 11.5-8.5 11.5z" /></svg>
+            {formatCount(comment.likes)}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setReplyTo(comment.id)
+              const handle = COMMENT_PEOPLE.find((p) => p.name === comment.name)?.handle ?? comment.name.toLowerCase().replace(/\s+/g, '')
+              setDraft(`@${handle} `)
+              inputRef.current?.focus()
+            }}
+          >
+            Reply
+          </button>
+        </div>
+        {top && comment.replies.length > 0 && (
+          <button
+            type="button"
+            className="vr"
+            onClick={() =>
+              setComments((current) =>
+                current.map((item) => (item.id === comment.id ? { ...item, open: !item.open } : item)),
+              )
+            }
+          >
+            {comment.open ? 'Hide replies' : `View ${comment.replies.length} ${comment.replies.length > 1 ? 'replies' : 'reply'}`}
+          </button>
+        )}
+        {top && comment.open && comment.replies.map((reply) => renderRow(reply, false))}
+      </div>
+    </div>
+  )
+
+  if (!open || !clip) return null
+
   return (
-    <div className="comment-replies">
-      {showReplies && (
-        <>
-          {replies.map((reply) => (
-            <div key={reply.id} className="reply-row">
-              <Avatar initials={reply.initials} size={28} />
-              <div>
-                <b>{reply.author} <small>{reply.time}</small></b>
-                <p dangerouslySetInnerHTML={{ __html: renderWithHashtags(reply.text).replace(/ /g, '&nbsp;') }} />
-                <button className="reply-like" onClick={() => onLikeReply(reply.id)}>
-                  ♡ {reply.likes}
-                </button>
-              </div>
+    <div className="sheet open" role="dialog" aria-modal="true" aria-label="Comments">
+      <div className="scrim" onClick={onClose} />
+      <div className="panel big">
+        <div className="grab" />
+        <div className="chead">
+          <div>
+            <b>{formatCount(total)} comments</b>
+            <div className="lv">
+              <span className="dot" aria-hidden="true" />
+              <span>{formatCount(watchers)}</span>&nbsp;watching now
             </div>
-          ))}
-          <form className="reply-compose" onSubmit={(e) => { e.preventDefault(); if (replyText.trim()) { onAddReply(replyText.trim()); setReplyText('') } }}>
-            <Avatar initials={accountInitials} size={28} />
-            <input placeholder="Add a reply..." value={replyText} onChange={(e) => setReplyText(e.target.value)} />
-            <button type="submit" className="primary-button" disabled={!replyText.trim()}>Reply</button>
-          </form>
-        </>
-      )}
+          </div>
+          <button type="button" className="ib" onClick={onClose} aria-label="Close comments">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+
+        <div className="clist">
+          {comments.map((comment) => renderRow(comment, true))}
+        </div>
+
+        <div className="typ" aria-live="polite">{typing}</div>
+
+        {suggestions.length > 0 && (
+          <div className="sug open">
+            {suggestions.map((person) => (
+              <button
+                key={person.handle}
+                type="button"
+                onClick={() => {
+                  setDraft((value) => value.replace(/@(\w*)$/, `@${person.handle} `))
+                  inputRef.current?.focus()
+                }}
+              >
+                <Avatar initials={initialsOf(person.name)} size={30} />
+                <span>
+                  <b>{person.name}</b> <small>@{person.handle}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {stickerOpen && (
+          <div className="stk open">
+            {COMMENT_STICKERS.map((sticker) => (
+              <button key={sticker} type="button" onClick={() => post('', sticker)} aria-label={`Send ${sticker}`}>
+                {sticker}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {replyTo && (
+          <div className="rto open">
+            <span>Replying to a comment</span>
+            <button type="button" onClick={() => { setReplyTo(null); setDraft('') }} aria-label="Cancel reply">?</button>
+          </div>
+        )}
+
+        <form
+          className="cin"
+          onSubmit={(event) => {
+            event.preventDefault()
+            post(draft)
+          }}
+        >
+          <button type="button" className="ib" onClick={() => setStickerOpen((value) => !value)} aria-label="Stickers" aria-pressed={stickerOpen}>
+            ??
+          </button>
+          <button
+            type="button"
+            className="ib"
+            onClick={() => {
+              setDraft((value) => `${value}${value && !value.endsWith(' ') ? ' ' : ''}@`)
+              inputRef.current?.focus()
+            }}
+            aria-label="Tag someone"
+          >
+            @
+          </button>
+          <input
+            ref={inputRef}
+            placeholder="Add a comment"
+            aria-label="Add a comment"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button type="submit" className="btn">Post</button>
+        </form>
+      </div>
     </div>
   )
 }
-
-/* ============ LIVE STREAM MODAL ============ */
 function LiveStreamModal({ open, onClose, onGoLive, isLive, streamTitle, setStreamTitle, streamTags, setStreamTags, notify }: { open: boolean; onClose: () => void; onGoLive: () => void; isLive: boolean; streamTitle: string; setStreamTitle: (v: string) => void; streamTags: string; setStreamTags: (v: string) => void; notify: (msg: string) => void }) {
   if (!open) return null
 
@@ -1331,8 +1697,8 @@ function LiveStreamModal({ open, onClose, onGoLive, isLive, streamTitle, setStre
             <div className="live-preview">
               <video muted playsInline style={{ width: '100%', aspectRatio: '9/16', background: '#000', borderRadius: 12 }} />
               <div className="live-overlay-stats">
-                <span>👁️ 0 viewers</span>
-                <span>⏱️ 0:00</span>
+                <span>👝︝ 0 viewers</span>
+                <span>❱︝ 0:00</span>
                 <span>💬 0 comments</span>
               </div>
             </div>
@@ -1376,14 +1742,14 @@ function DuetStitchModal({ clip, open, onClose, onConfirm, remixType, setRemixTy
       <div className="remix-content">
         <div className="remix-options">
           <button className={`remix-option${remixType === 'duet' ? ' active' : ''}`} onClick={() => setRemixType('duet')}>
-            <div className="remix-icon">↔️</div>
+            <div className="remix-icon">↔︝</div>
             <div>
               <b>Duet</b>
               <small>Record side-by-side</small>
             </div>
           </button>
           <button className={`remix-option${remixType === 'stitch' ? ' active' : ''}`} onClick={() => setRemixType('stitch')}>
-            <div className="remix-icon">✂️</div>
+            <div className="remix-icon">✂︝</div>
             <div>
               <b>Stitch</b>
               <small>Clip and add to your video</small>
@@ -1446,7 +1812,7 @@ function VideoStage({
   onComments,
   onShare,
   onSave,
-  onSearch,
+  saved = false,
   onRepost,
   isPlaying,
   onPlayingChange,
@@ -1454,8 +1820,13 @@ function VideoStage({
   onOpenHashtag,
   onOpenDuetStitch,
   onDelete,
+  onStory,
+  onCopyLink,
+  onReport,
+  reposted = false,
+  following = false,
+  onFollow,
   accountHandle,
-  notify,
   onMutedChange,
 }: {
   clip: Clip
@@ -1466,7 +1837,7 @@ function VideoStage({
   onComments: () => void
   onShare: () => void
   onSave: () => void
-  onSearch: () => void
+  saved?: boolean
   onRepost: (clip: Clip) => void
   isPlaying: boolean
   onPlayingChange: (playing: boolean) => void
@@ -1474,6 +1845,12 @@ function VideoStage({
   onOpenHashtag: (hashtag: Hashtag) => void
   onOpenDuetStitch: (clip: Clip) => void
   onDelete: (clip: Clip) => void
+  onStory: (clip: Clip) => void
+  onCopyLink: (clip: Clip) => void
+  onReport: (clip: Clip) => void
+  reposted?: boolean
+  following?: boolean
+  onFollow: (clip: Clip) => void
   accountHandle: string
   notify: (msg: string) => void
   onMutedChange?: (muted: boolean) => void
@@ -1598,7 +1975,7 @@ function VideoStage({
 
   return (
     <article
-      className={`video-stage${paused ? ' paused' : ''}${isActive ? ' active-stage' : ''}`}
+      className={`card${paused ? ' paused' : ''}${isActive ? ' active-stage' : ''}`}
       data-video-id={clip.id}
       onClick={handleStageClick}
       onContextMenu={handleContextMenu}
@@ -1619,119 +1996,116 @@ function VideoStage({
           loop
           crossOrigin="anonymous"
           autoPlay
+          className="sc"
           onTimeUpdate={handleTimeUpdate}
           onError={(e) => console.error('Video error:', e.currentTarget.error, 'src:', clip.videoSrc)}
-          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }}
         />
       ) : (
-        <img
-          src={clip.image}
-          alt={clip.imageAlt}
-          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }}
-        />
+        <img className="sc" src={clip.image} alt={clip.imageAlt} />
       )}
 
       {/* Floating double-tap heart animation */}
       {heartAnim && <div className="heart-pulse-anim" aria-hidden="true">♥</div>}
 
-      {/* Top scrim bar: a real search trigger plus a fullscreen toggle */}
-      <div className="video-scrim" onClick={(e) => e.stopPropagation()}>
-        <button
-          className="scrim-search"
-          onClick={onSearch}
-          aria-label="Search"
-          title="Search (S)"
-        >
-          <span className="scrim-search-icon" aria-hidden="true">⌕</span>
-          <span className="scrim-search-text">Search</span>
-        </button>
-      </div>
+      <div className="shade" />
 
-      <button
-        className="video-controls"
-        aria-label={paused ? 'Play video' : 'Pause video'}
-        onClick={(e) => {
-          e.stopPropagation()
-          onPlayingChange(paused)
-        }}
-      >
-        {paused ? '▶' : 'Ⅱ'}
-</button>
-
-      {/* Right-side TikTok actions */}
-      <div className="video-actions" onClick={(e) => e.stopPropagation()}>
-        <button className={`action-button like-button${liked ? ' liked' : ''}`} aria-label="Like video" onClick={onLike}>
-          <b>{liked ? '♥' : '♡'}</b>
-          <small>{formatCount(clip.likes + (liked ? 1 : 0))}</small>
+      {/* Right-side TikTok action rail */}
+      <div className="rail" onClick={(e) => e.stopPropagation()}>
+        <button className="act" data-k="like" aria-pressed={liked} aria-label="Like video" onClick={onLike}>
+          <span className="ib glass">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5S3.5 15 3.5 9A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.5 2c0 6-8.5 11.5-8.5 11.5z" /></svg>
+          </span>
+          <span>{formatCount(clip.likes + (liked ? 1 : 0))}</span>
         </button>
-        <button className="action-button comments-button" aria-label="View comments" onClick={onComments}>
-          <b>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-5.5A7.5 7.5 0 1 1 20 11.5Z" /></svg>
-          </b>
-          <small>{formatCount(clip.comments)}</small>
+        <button className="act" aria-label="View comments" onClick={onComments}>
+          <span className="ib glass">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
+          </span>
+          <span>{formatCount(clip.comments)}</span>
         </button>
-        <button className="action-button share-button" aria-label="Share video" onClick={onShare}>
-          <b>↗</b>
-          <small>Share</small>
+        <button className="act" data-k="save" aria-pressed={saved} aria-label={saved ? 'Remove from saved' : 'Save video'} onClick={onSave}>
+          <span className="ib glass">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4z" /></svg>
+          </span>
+          <span>{saved ? 'Saved' : 'Save'}</span>
         </button>
-        <button className="action-button save-button" aria-label="Save video" onClick={onSave}>
-          <b>♧</b>
-          <small>Save</small>
+        <button className="act" aria-label="Share video" onClick={onShare}>
+          <span className="ib glass">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12v7h14v-7M12 15V3M8 7l4-4 4 4" /></svg>
+          </span>
+          <span>Share</span>
         </button>
-        <button className="action-button volume-button" aria-label={isMuted ? 'Unmute' : 'Mute'} onClick={() => { if (onMutedChange) onMutedChange(!isMuted); }}>
-          <b>{isMuted ? '🔇' : '🔊'}</b>
-          <small>{isMuted ? 'Muted' : 'Sound'}</small>
+        <button className="act" aria-label={isMuted ? 'Unmute' : 'Mute'} onClick={() => { if (onMutedChange) onMutedChange(!isMuted); }}>
+          <span className="ib glass">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 10v4h3l4 3V7L7 10z" />
+              {isMuted ? <path d="M16 9l5 6M21 9l-5 6" /> : <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />}
+            </svg>
+          </span>
+          <span>{isMuted ? 'Muted' : 'Sound'}</span>
         </button>
-        {/* Rotating Sound Disc */}
+        {/* Rotating sound disc */}
         <div
-          className={`sound-disc${paused || !isActive ? ' paused' : ''}`}
+          className={`disc${paused || !isActive ? ' paused' : ''}`}
           onClick={(e) => {
             e.stopPropagation()
-            const sound = sounds.find((s) => clip.audio.includes(s.title))
-            if (sound) onOpenSoundDetail(sound)
+            const sound = sounds.find((s) => clip.audio.includes(s.title)) ?? fallbackSound(clip)
+            onOpenSoundDetail(sound)
           }}
           title={clip.audio}
-          aria-label="Sound track disc"
-        >
-          <img src={clip.image} alt="" className="sound-disc-art" />
-        </div>
+          role="img"
+          aria-label="Sound track"
+        />
       </div>
 
       {/* Bottom video details */}
-      <div className="video-bottom">
-        <div className="video-user">
-          <Avatar initials={clip.initials} src={clip.avatarUrl} />
-          <span>
-            {clip.repostedFrom ? (
-              <span className="repost-indicator">
-                <svg className="repost-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92zM6 15c-1.66 0-3 1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.35 3-3 3z"/></svg>
-                <span className="repost-label">Reposted</span>
+      <div className="info">
+        {reposted && (
+          <div className="rp">
+            <span className="ib glass" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" /></svg>
+            </span>
+            <span>{clip.repostedFrom ? 'Reposted' : 'You reposted'}</span>
+          </div>
+        )}
+        <div className="who row">
+          <span className="avw">
+            <Avatar initials={clip.initials} src={clip.avatarUrl} />
+            {following ? (
+              <span className="fplus done" role="img" aria-label="Following">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
               </span>
-            ) : null}
-            <strong>{clip.creator}{clip.verified && <span className="badge badge-verified" title="Verified account" style={{ marginLeft: 4, verticalAlign: 'middle' }}>✔</span>}</strong>
-            {clip.repostedFrom ? (
-              <>
-                <small> · </small>
-                {clip.originalHandle ? (
-                  <span className="mention-link">@{clip.originalHandle}</span>
-                ) : (
-                  <small>@{clip.originalCreator?.replace(/\s+/g, '.').toLowerCase()}</small>
-                )}
-                <small>'s video</small>
-              </>
-            ) : null}
-            {!clip.repostedFrom ? <small> · {clip.handle} · 18 min ago</small> : null}
+            ) : (
+              <button
+                type="button"
+                className="fplus"
+                aria-label={`Follow ${clip.creator}`}
+                onClick={(event) => { event.stopPropagation(); onFollow(clip) }}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              </button>
+            )}
           </span>
-          <button className="follow-button" onClick={(e) => { e.stopPropagation(); notify('Following ' + clip.creator) }}>Follow</button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <b>
+              {clip.creator}
+              {clip.verified && <Verified />}
+            </b>
+            <span>
+              {clip.repostedFrom
+                ? `Reposted${clip.originalHandle ? ' from @' + clip.originalHandle : ''}`
+                : `@${clip.handle.replace(/^@/, '')} � 18 min ago`}
+            </span>
+          </div>
         </div>
-        <p className="caption">
+        <p>
           {clip.caption.split(' ').map((word) => {
             if (word.startsWith('#')) {
               const tag = hashtags.find((h) => h.tag.toLowerCase() === word.toLowerCase())
-              return tag ? <button key={word} className="hashtag-link" onClick={(e) => { e.stopPropagation(); onOpenHashtag(tag) }}>{word}</button> : <span key={word}>{word}</span>
+              return tag ? <button key={word} className="tag" onClick={(e) => { e.stopPropagation(); onOpenHashtag(tag) }}>{word} </button> : <span key={word}>{word} </span>
             }
             if (word.startsWith('@')) {
-              return <span key={word} className="mention-link">{word}</span>
+              return <span key={word} className="mention-link">{word} </span>
             }
             return <span key={word}>{word} </span>
           })}
@@ -1739,16 +2113,30 @@ function VideoStage({
         <div className="tags">
           {clip.tags.split(' ').map((tag) => {
             const hashtag = hashtags.find((h) => h.tag.toLowerCase() === tag.toLowerCase())
-            return hashtag ? <button key={tag} className="hashtag-link" onClick={(e) => { e.stopPropagation(); onOpenHashtag(hashtag) }}>{tag}</button> : <span key={tag}>{tag}</span>
+            return hashtag ? <button key={tag} className="tag" onClick={(e) => { e.stopPropagation(); onOpenHashtag(hashtag) }}>{tag} </button> : <span key={tag}>{tag} </span>
           })}
         </div>
-        <button className="audio-line" onClick={(e) => { e.stopPropagation(); const sound = sounds.find((s) => clip.audio.includes(s.title)); if (sound) onOpenSoundDetail(sound) }}>♫ &nbsp; {clip.audio}</button>
+        <button
+          className="aud glass"
+          onClick={(e) => {
+            e.stopPropagation()
+            const sound = sounds.find((s) => clip.audio.includes(s.title)) ?? fallbackSound(clip)
+            onOpenSoundDetail(sound)
+          }}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></svg>
+          {clip.audio}
+        </button>
       </div>
 
-      {/* Scrub / Progress Bar */}
-      <div className="video-progress">
-        <span style={{ width: `${progressPercent}%`, transition: clip.videoSrc ? 'width 0.1s linear' : 'none' }} />
+      {/* Scrub / progress bar */}
+      <div className="bar">
+        <i style={{ width: `${progressPercent}%`, transition: clip.videoSrc ? 'width 0.1s linear' : 'none' }} />
       </div>
+
+      <button className="pause" aria-hidden="true" tabIndex={-1}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" /></svg>
+      </button>
       <LongPressMenu
         clip={clip}
         position={longPressMenuPos}
@@ -1759,8 +2147,10 @@ function VideoStage({
         onShare={onShare}
         onSave={onSave}
         onDelete={clip.handle === accountHandle ? onDelete : undefined}
+        onStory={onStory}
+        onCopyLink={onCopyLink}
+        onReport={onReport}
       />
-      {clip.handle === accountHandle ? (console.log('[LongPressMenu] Showing delete for:', clip.handle, 'accountHandle:', accountHandle), null) : null}
     </article>
   )
 }
@@ -1775,7 +2165,10 @@ function LongPressMenu({
   onStitch,
   onShare,
   onSave,
-  onDelete
+  onDelete,
+  onStory,
+  onCopyLink,
+  onReport
 }: { 
   clip: Clip
   position: { x: number; y: number } | null
@@ -1786,6 +2179,9 @@ function LongPressMenu({
   onShare: () => void
   onSave: () => void
   onDelete?: (clip: Clip) => void
+  onStory: (clip: Clip) => void
+  onCopyLink: (clip: Clip) => void
+  onReport: (clip: Clip) => void
 }) {
   if (!position) return null
 
@@ -1810,41 +2206,61 @@ function LongPressMenu({
   }, [onClose])
 
   return (
-    <div
-      className="long-press-menu"
-      style={{ left: position.x, top: position.y }}
-      role="menu"
-      aria-label="Video actions"
-    >
-      <div className="long-press-menu-item" role="menuitem" onClick={() => { onRepost(clip); onClose() }}>
-        <span className="menu-icon">↻</span>
-        <span>Repost</span>
-      </div>
-      <div className="long-press-menu-item" role="menuitem" onClick={() => { onDuet(clip); onClose() }}>
-        <span className="menu-icon">↔️</span>
-        <span>Duet</span>
-      </div>
-      <div className="long-press-menu-item" role="menuitem" onClick={() => { onStitch(clip); onClose() }}>
-        <span className="menu-icon">✂️</span>
-        <span>Stitch</span>
-      </div>
-      <div className="long-press-menu-divider" />
-      <div className="long-press-menu-item" role="menuitem" onClick={() => { onShare(); onClose() }}>
-        <span className="menu-icon">↗</span>
-        <span>Share</span>
-      </div>
-      <div className="long-press-menu-item" role="menuitem" onClick={() => { onSave(); onClose() }}>
-        <span className="menu-icon">♧</span>
-        <span>Save video</span>
-      </div>
-      <div className="long-press-menu-divider" />
-      {onDelete ? (
-        <div className="long-press-menu-item danger" role="menuitem" onClick={() => { if (confirm('Delete this video?')) { onDelete(clip); onClose() } }}>
-          <span className="menu-icon">🗑</span>
-          <span>Delete</span>
+    <>
+      <div className="sheet open" role="dialog" aria-modal="true" aria-label="Video actions">
+        <div className="scrim" onClick={onClose} />
+        <div className="panel">
+          <div className="grab" />
+          <div className="chead">
+            <div>
+              <b>Video options</b>
+              <div className="lv">@{clip.handle}</div>
+            </div>
+            <button type="button" className="ib" onClick={onClose} aria-label="Close menu">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+          <button type="button" className="mi" onClick={() => { onRepost(clip); onClose() }}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" /></svg>
+            <span>Repost</span>
+          </button>
+          <button type="button" className="mi" onClick={() => { onStory(clip); onClose() }}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></svg>
+            <span>Add to story</span>
+          </button>
+          <button type="button" className="mi" onClick={() => { onDuet(clip); onClose() }}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="8" height="12" rx="2" /><rect x="13" y="6" width="8" height="12" rx="2" /></svg>
+            <span>Duet</span>
+          </button>
+          <button type="button" className="mi" onClick={() => { onStitch(clip); onClose() }}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><path d="M8 8l12 8M8 16L20 8" /></svg>
+            <span>Stitch</span>
+          </button>
+          <button type="button" className="mi" onClick={() => { onSave(); onClose() }}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4z" /></svg>
+            <span>Save video</span>
+          </button>
+          <button type="button" className="mi" onClick={() => { onShare(); onClose() }}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12v7h14v-7M12 15V3M8 7l4-4 4 4" /></svg>
+            <span>Share to other app</span>
+          </button>
+          <button type="button" className="mi" onClick={() => { onCopyLink(clip); onClose() }}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>
+            <span>Copy link</span>
+          </button>
+          <button type="button" className="mi bad" onClick={() => { onReport(clip); onClose() }}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4M5 4h12l-2 4 2 4H5" /></svg>
+            <span>Report</span>
+          </button>
+          {onDelete ? (
+            <button type="button" className="mi bad" onClick={() => { if (confirm('Delete this video?')) { onDelete(clip); onClose() } }}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14" /></svg>
+              <span>Delete</span>
+            </button>
+          ) : null}
         </div>
-      ) : null}
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -2046,7 +2462,7 @@ function OwnerPanel({ notify, refreshProfile, clips }: { notify: (message: strin
                     <td>
                       <span className="owner-user-cell">
                         <Avatar initials={initialsOf(user.display_name || user.username)} src={user.avatar_url} size={30} />
-                        <span><b>{user.display_name || user.username || '—'}{user.verified && <span className="badge badge-verified" title="Verified account">✔</span>}</b><small>@{user.username || 'unset'}</small></span>
+        <span><b>{user.display_name || user.username || "�"}{user.verified && <Verified />}</b><small>@{user.username || "unset"}</small></span>
                       </span>
                     </td>
                     <td className="owner-email">{user.email || '—'}</td>
@@ -2260,28 +2676,47 @@ export default function App() {
   const [liked, setLiked] = useState<Record<string, boolean>>({})
   const [activeClipIndex, setActiveClipIndex] = useState(0)
   const [isMuted, setIsMuted] = useState(true)
+  const [profileTab, setProfileTab] = useState<'videos' | 'reposts' | 'liked' | 'saved' | 'collections'>('videos')
+  const [followedHandles, setFollowedHandles] = useState<Set<string>>(new Set())
   const [homeFeedTab, setHomeFeedTab] = useState<'following' | 'for-you' | 'live'>('for-you')
+  const [discoverChip, setDiscoverChip] = useState('For you')
+  const visibleDiscoverCards = useMemo(
+    () => (discoverChip === 'For you'
+      ? discoverCards
+      : discoverCards.filter((card) => `${card.meta} ${card.alt}`.toLowerCase().includes(discoverChip.toLowerCase()))),
+    [discoverChip],
+  )
   const videoLayoutRef = useRef<HTMLDivElement>(null)
   const lastWheelTimeRef = useRef(0)
 
   // Filter clips based on feed tab
   const feedClips = useMemo(() => {
     switch (homeFeedTab) {
-      case 'following':
-        // Show clips from followed creators (using peopleFollowing) + user's own clips
-        return clips.filter((clip) => 
-          peopleFollowing.some((p) => p.name === clip.creator || p.handle === clip.handle) ||
-          clip.handle === accountHandle || // User's own videos
-          clip.creator === accountName
+      case 'following': {
+        // Show clips from followed creators + the signed-in account's own clips
+        const handles = new Set(peopleFollowing.map((p) => p.handle.replace(/^@/, '').toLowerCase()))
+        const names = new Set(peopleFollowing.map((p) => p.name.toLowerCase()))
+        const matches = clips.filter(
+          (clip) =>
+            handles.has(clip.handle.toLowerCase()) ||
+            names.has(clip.creator.toLowerCase()) ||
+            clip.handle === accountHandle ||
+            clip.creator === accountName,
         )
+        // Never leave the tab empty: fall back to the freshest clips
+        return matches.length > 0 ? matches : clips.slice(0, 3)
+      }
       case 'live':
-        // Show live streams (clips with isLive or videoSrc that looks like live)
-        return clips.filter((clip) => clip.videoSrc?.includes('live') || clip.id === 'live1' || clip.id === 'live2')
+        // The Live tab renders the live-room grid instead of the vertical feed
+        return []
       case 'for-you':
       default:
         return clips
     }
-  }, [clips, homeFeedTab, peopleFollowing, accountHandle, accountName])
+  }, [clips, homeFeedTab, accountHandle, accountName])
+
+  // The clip the comments sheet is attached to
+  const activeClip = feedClips[activeClipIndex] ?? feedClips[0] ?? clips[0]
 
   // Playback state for the active clip. Tapping the stage (or the play control)
   // toggles this, and it feeds both the video element and the sound engine so
@@ -2447,9 +2882,6 @@ export default function App() {
   const [selectedHashtag, setSelectedHashtag] = useState<Hashtag | null>(null)
   const [activeEffect, setActiveEffect] = useState<VideoEffect | null>(videoEffects[0])
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([])
-  const [commentReplies, setCommentReplies] = useState<Record<string, CommentReply[]>>({})
-  const [showReplyInput, setShowReplyInput] = useState<string | null>(null)
-  const [replyDraft, setReplyDraft] = useState('')
   const [liveStreaming, setLiveStreaming] = useState(false)
   const [liveStreamTitle, setLiveStreamTitle] = useState('')
   const [liveStreamTags, setLiveStreamTags] = useState('')
@@ -2495,25 +2927,126 @@ export default function App() {
     setLiked((current) => ({ ...current, [clipId]: !current[clipId] }))
   }
 
-  /* --- comments --- */
-  const [commentList, setCommentList] = useState<Comment[]>(starterComments)
-  const [commentDraft, setCommentDraft] = useState('')
-  const [likedComments, setLikedComments] = useState<Record<string, boolean>>({})
+  /* --- saves & reposts (Supabase-backed) --- */
+  const [savedClips, setSavedClips] = useState<Set<string>>(new Set())
+  const [repostedClips, setRepostedClips] = useState<Set<string>>(new Set())
 
-  function submitComment(event: FormEvent) {
-    event.preventDefault()
-    const text = commentDraft.trim()
-    if (!text) return
-    setCommentList((current) => [{ id: crypto.randomUUID(), author: accountName, initials: accountInitials, time: 'now', text, likes: 0 }, ...current])
-    setCommentDraft('')
-    notify('Comment posted.')
+  // Derived collections for the profile tabs
+  const likedClips = useMemo(() => clips.filter((clip) => !!liked[clip.id]), [clips, liked])
+  const savedClipsList = useMemo(() => clips.filter((clip) => savedClips.has(clip.id)), [clips, savedClips])
+
+  useEffect(() => {
+    if (!session || !supabase) {
+      setSavedClips(new Set())
+      setRepostedClips(new Set())
+      return
+    }
+    let alive = true
+    const userId = session.user.id
+    void fetchSavedIds(userId).then((ids) => { if (alive) setSavedClips(ids) })
+    void fetchRepostedIds(userId).then((ids) => { if (alive) setRepostedClips(ids) })
+    return () => { alive = false }
+  }, [session])
+
+  async function toggleSave(clip: Clip) {
+    if (!session || !supabase || !clip.id) { notify('Sign in to save videos.'); return }
+    const userId = session.user.id
+    const on = !savedClips.has(clip.id)
+    setSavedClips((current) => {
+      const next = new Set(current)
+      if (on) next.add(clip.id); else next.delete(clip.id)
+      return next
+    })
+    const ok = await setSaved(userId, clip.id, on)
+    if (!ok) {
+      setSavedClips((current) => {
+        const next = new Set(current)
+        if (on) next.delete(clip.id); else next.add(clip.id)
+        return next
+      })
+      notify('Could not update your saves.')
+      return
+    }
+    notify(on ? 'Saved to your collection.' : 'Removed from your collection.')
   }
+
+  async function toggleRepost(clip: Clip) {
+    const userId = session?.user.id
+    const on = !repostedClips.has(clip.id)
+    setRepostedClips((current) => {
+      const next = new Set(current)
+      if (on) next.add(clip.id); else next.delete(clip.id)
+      return next
+    })
+    if (on) {
+      handleRepost(clip)
+      notify('Reposted to your profile.')
+    } else {
+      setClips((prev) => prev.filter((item) => item.repostedFrom !== clip.id))
+      notify('Repost removed.')
+    }
+    if (!userId || !supabase) return
+    const ok = await setReposted(userId, clip.id, on)
+    if (!ok) notify('Could not update your reposts.')
+  }
+
+  function toggleFollow(clip: Clip) {
+    const handle = clip.handle.replace(/^@/, '').toLowerCase()
+    setFollowedHandles((current) => {
+      const next = new Set(current)
+      if (next.has(handle)) { next.delete(handle); notify(`Unfollowed ${clip.creator}`) } else { next.add(handle); notify(`Following ${clip.creator}`) }
+      return next
+    })
+  }
+  function addClipToStory(clip: Clip) {
+    const entry: Story = {
+      id: `story-${Date.now()}`,
+      name: accountName || 'You',
+      initials: accountInitials,
+      image: clip.image,
+      caption: clip.caption,
+      time: 'now',
+      video: clip.videoSrc,
+    }
+    setStories((current) => [entry, ...current])
+    notify('Added to your story.')
+  }
+
+  async function copyClipLink(clip: Clip) {
+    const url = `${window.location.origin}/?v=${encodeURIComponent(clip.id)}`
+    try {
+      await navigator.clipboard.writeText(url)
+      notify('Link copied')
+    } catch {
+      notify(url)
+    }
+  }
+
+  function reportClip(clip: Clip) {
+    notify(`Report sent for “${clip.caption.slice(0, 40)}”. Thanks.`)
+  }
+
 
   /* --- stories --- */
   const [storyOpen, setStoryOpen] = useState(false)
   const [storyIndex, setStoryIndex] = useState(0)
   const [storyReply, setStoryReply] = useState('')
-  const currentStory = stories[storyIndex]
+  const [storyLiked, setStoryLiked] = useState(false)
+  const [stories, setStories] = useState<Story[]>(demoStories)
+  const currentStory = stories[storyIndex] ?? stories[0]
+
+  useEffect(() => {
+    if (!session || !supabase) {
+      setStories(demoStories)
+      return
+    }
+    let alive = true
+    void fetchStories(session.user.id, []).then((rows) => {
+      if (!alive || !rows.length) return
+      setStories(toStoryList(rows))
+    })
+    return () => { alive = false }
+  }, [session])
 
   function openStory(index: number) {
     setStoryIndex(index)
@@ -2522,11 +3055,19 @@ export default function App() {
   function moveStory(direction: 1 | -1) {
     setStoryIndex((current) => (current + direction + stories.length) % stories.length)
   }
-  function submitStoryReply(event: FormEvent) {
+  async function submitStoryReply(event: FormEvent) {
     event.preventDefault()
-    if (!storyReply.trim()) return
+    const text = storyReply.trim()
+    if (!text) return
     setStoryReply('')
     setStoryOpen(false)
+
+    const isRealStory = currentStory && !demoStories.some((story) => story.id === currentStory.id)
+    if (session && supabase && currentStory && isRealStory) {
+      const sent = await postMessage(session.user.id, currentStory.id, `↩ Story: ${text}`)
+      notify(sent ? 'Reply sent.' : 'Could not send that reply.')
+      return
+    }
     setScreen('message')
     notify('Story reply opened in Messages.')
   }
@@ -2581,13 +3122,73 @@ export default function App() {
 
   /* --- live --- */
   const [liveOpen, setLiveOpen] = useState(false)
-  const [liveChat, setLiveChat] = useState([
-    { id: 1, name: 'sofia.draws', text: 'This view is incredible!' },
-    { id: 2, name: 'jonah.lee', text: 'Adding this spot to my list.' },
-    { id: 3, name: 'nico.lane', text: 'Stay for the sunset 🌅' },
-  ])
+  const [liveRoom, setLiveRoom] = useState<LiveRoom | null>(null)
+  const [liveViewers, setLiveViewers] = useState(1240)
+  const [liveChat, setLiveChat] = useState(liveChatSeed)
   const [liveDraft, setLiveDraft] = useState('')
   const [liveHeart, setLiveHeart] = useState(false)
+  const [liveHearts, setLiveHearts] = useState<number[]>([])
+  const [giftOpen, setGiftOpen] = useState(false)
+  const [coinPacksOpen, setCoinPacksOpen] = useState(false)
+  const [viewersOpen, setViewersOpen] = useState(false)
+  const [liveCoins, setLiveCoins] = useState(40)
+  const [giftBanners, setGiftBanners] = useState<Array<{ id: number; gift: string }>>([])
+  const [giftBurst, setGiftBurst] = useState<{ id: number; gift: string; big: boolean } | null>(null)
+  const liveViewersList = useMemo(
+    () => (liveRoom ? [{ name: liveRoom.name, handle: liveRoom.handle }, ...LIVE_VIEWERS] : LIVE_VIEWERS),
+    [liveRoom],
+  )
+
+  function openLiveRoom(room: LiveRoom) {
+    setLiveRoom(room)
+    setLiveViewers(room.viewers)
+    setLiveChat(liveChatSeed)
+    setGiftOpen(false)
+    setCoinPacksOpen(false)
+    setViewersOpen(false)
+    setGiftBanners([])
+    setGiftBurst(null)
+    setLiveOpen(true)
+  }
+
+  function closeLiveRoom() {
+    setLiveOpen(false)
+    setGiftOpen(false)
+    setCoinPacksOpen(false)
+    setViewersOpen(false)
+  }
+
+  function sendLiveGift(gift: string) {
+    const meta = LIVE_GIFTS.find((item) => item.name === gift)
+    const cost = meta?.cost ?? 1
+    if (liveCoins < cost) {
+      notify(`You need ${cost - liveCoins} more coins to send ${gift}.`)
+      setCoinPacksOpen(true)
+      return
+    }
+    const id = Date.now()
+    setLiveCoins((value) => value - cost)
+    setGiftBanners((current) => [...current, { id, gift }])
+    setGiftBurst({ id, gift, big: cost >= 50 })
+    setLiveChat((current) => [...current, { id: id + 1, name: 'you', text: `sent a ${gift}` }])
+    window.setTimeout(() => setGiftBanners((current) => current.filter((banner) => banner.id !== id)), 2800)
+    window.setTimeout(() => setGiftBurst((current) => (current && current.id === id ? null : current)), 3200)
+    notify(`Gift sent: ${gift}`)
+  }
+
+  function popHeart() {
+    const id = Date.now()
+    setLiveHearts((current) => [...current, id])
+    window.setTimeout(() => setLiveHearts((current) => current.filter((value) => value !== id)), 1600)
+  }
+
+  useEffect(() => {
+    if (!liveOpen) return
+    const timer = window.setInterval(() => {
+      setLiveViewers((value) => Math.max(50, value + Math.round(Math.random() * 10 - 3)))
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [liveOpen])
 
   function submitLiveChat(event: FormEvent) {
     event.preventDefault()
@@ -2604,6 +3205,11 @@ export default function App() {
   const [chatDraft, setChatDraft] = useState('')
   const [messageSearch, setMessageSearch] = useState('')
   const [chatCategory, setChatCategory] = useState<ChatCategory>('all')
+  const [inboxTab, setInboxTab] = useState<'activity' | 'messages'>('activity')
+  const [supportView, setSupportView] = useState<'home' | 'tickets' | 'new' | 'chat'>('home')
+  const [ticketFilter, setTicketFilter] = useState<'all' | 'active' | 'done'>('all')
+  const [supportDraft, setSupportDraft] = useState('')
+  const [supportChat, setSupportChat] = useState<Array<{ id: number; mine: boolean; text: string }>>([])
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [showAttachments, setShowAttachments] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
@@ -2611,6 +3217,55 @@ export default function App() {
   const [chatTheme, setChatTheme] = useState<'default' | 'dark' | 'blue' | 'green' | 'purple'>('default')
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null)
+
+  // Real conversations from Supabase (falls back to the samples above).
+  useEffect(() => {
+    if (!session || !supabase) {
+      setConversations(starterConversations)
+      return
+    }
+    let alive = true
+    const userId = session.user.id
+    void fetchConversations(userId).then((rows) => {
+      if (!alive || !rows.length) return
+      setConversations(rows.map((row) => ({
+        id: row.id,
+        name: row.username,
+        initials: row.username.slice(0, 2).toUpperCase(),
+        handle: `@${row.username}`,
+        preview: row.body,
+        time: timeAgo(row.created_at),
+      })))
+    })
+    return () => { alive = false }
+  }, [session])
+
+  // New messages arrive over Realtime.
+  useEffect(() => {
+    if (!session || !supabase) return
+    const userId = session.user.id
+    return onNewMessage(userId, (row) => {
+      const other = row.from_id === userId ? row.to_id : row.from_id
+      const incoming: Message = {
+        id: row.id,
+        conversationId: other,
+        senderId: row.from_id,
+        senderName: '',
+        senderInitials: '',
+        senderAvatar: null,
+        text: row.body,
+        time: new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date(row.created_at).getTime(),
+        status: 'delivered',
+        mine: row.from_id === userId,
+      }
+      setMessages((current) => {
+        const existing = current[other] ?? []
+        if (existing.some((message) => message.id === row.id)) return current
+        return { ...current, [other]: [...existing, incoming] }
+      })
+    })
+  }, [session])
 
   // Derived mute state from active conversation
   const chatMuted = activeConversation?.muted ?? false
@@ -2634,7 +3289,7 @@ export default function App() {
         { id: 'm9', conversationId: 'nl', senderId: 'nl', senderName: 'Nico Lane', senderInitials: 'NL', senderAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80', text: 'Perfect. I\'ll send you the trailhead location.', time: '2:20 PM', timestamp: Date.now() - 10760000, status: 'read' },
       ],
       jw: [
-        { id: 'm10', conversationId: 'jw', senderId: 'jw', senderName: 'Jules Walker', senderInitials: 'JW', senderAvatar: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=120&q=80', text: 'Liked your post "Mountain lake at golden hour" 🏔️', time: 'Yesterday', timestamp: Date.now() - 86400000, status: 'read' },
+        { id: 'm10', conversationId: 'jw', senderId: 'jw', senderName: 'Jules Walker', senderInitials: 'JW', senderAvatar: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=120&q=80', text: 'Liked your post "Mountain lake at golden hour" 🝔︝', time: 'Yesterday', timestamp: Date.now() - 86400000, status: 'read' },
       ],
       dm: [
         { id: 'm11', conversationId: 'dm', senderId: 'dm', senderName: 'Devon Miles', senderInitials: 'DM', senderAvatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=120&q=80', text: 'Shared a sound: "Midnight sessions" 🎵', time: '2 days ago', timestamp: Date.now() - 172800000, status: 'read' },
@@ -2651,11 +3306,31 @@ export default function App() {
     setMessages(initialMessages)
   }, [])
 
-  function openChat(conversation: Conversation) {
+  async function openChat(conversation: Conversation) {
     setActiveConversation(conversation)
     setScreen('chat')
     // Mark as read
     setConversations((current) => current.map((c) => c.id === conversation.id ? { ...c, unread: 0 } : c))
+
+    if (!session || !supabase) return
+    const rows = await fetchThread(session.user.id, conversation.id)
+    if (!rows.length) return
+    setMessages((current) => ({
+      ...current,
+      [conversation.id]: rows.map((row) => ({
+        id: row.id,
+        conversationId: conversation.id,
+        senderId: row.from_id,
+        senderName: row.from_id === session.user.id ? accountName : conversation.name,
+        senderInitials: row.from_id === session.user.id ? accountInitials : conversation.initials,
+        senderAvatar: null,
+        text: row.body,
+        time: new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date(row.created_at).getTime(),
+        status: 'read',
+        mine: row.from_id === session.user.id,
+      })),
+    }))
   }
 
   function closeChat() {
@@ -2696,6 +3371,10 @@ export default function App() {
       ...current,
       [activeConversation!.id]: [...(current[activeConversation!.id] || []), newMessage],
     }))
+
+    if (session && supabase) {
+      void postMessage(session.user.id, activeConversation.id, text)
+    }
 
     // Simulate sending
     setTimeout(() => {
@@ -2785,27 +3464,6 @@ export default function App() {
     notify('User unblocked.')
   }
 
-  function addCommentReply(commentId: string, text: string) {
-    const newReply: CommentReply = {
-      id: crypto.randomUUID(),
-      commentId,
-      author: accountName,
-      initials: accountInitials,
-      time: 'now',
-      text,
-      likes: 0,
-    }
-    setCommentReplies((current) => ({
-      ...current,
-      [commentId]: [...(current[commentId] || []), newReply],
-    }))
-    notify('Reply posted.')
-  }
-
-  function likeCommentReply(_replyId: string) {
-    // For simplicity, just notify
-    notify('Reply liked.')
-  }
 
   function goLive() {
     if (!liveStreamTitle.trim()) {
@@ -2908,15 +3566,53 @@ export default function App() {
   }
 
   /* --- settings --- */
-  type SettingsSection = 'Account' | 'Privacy' | 'Notifications' | 'Playback' | 'Accessibility'
-  const SETTINGS_SECTIONS: SettingsSection[] = ['Account', 'Privacy', 'Notifications', 'Playback', 'Accessibility']
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('Account')
+  type SettingsView = 'main' | 'more' | 'support'
+  const [settingsView, setSettingsView] = useState<SettingsView>('main')
+  const [blockedOpen, setBlockedOpen] = useState(false)
+
+  /* --- support tickets & coins (Supabase) --- */
+  const [tickets, setTickets] = useState<TicketRow[]>([])
+  const [ticketSubject, setTicketSubject] = useState('')
+  const [ticketDetails, setTicketDetails] = useState('')
+  const [ticketBusy, setTicketBusy] = useState(false)
+  const [coins, setCoins] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!session || !supabase) { setTickets([]); setCoins(null); return }
+    let alive = true
+    const userId = session.user.id
+    void fetchTickets(userId).then((rows) => { if (alive) setTickets(rows) })
+    void fetchCoins(userId).then((value) => { if (alive) setCoins(value) })
+    return () => { alive = false }
+  }, [session, screen])
+
+  async function submitTicket() {
+    if (!session || !supabase) { notify('Sign in to contact support.'); return }
+    if (!ticketSubject.trim() || !ticketDetails.trim()) { notify('Add a subject and some details first.'); return }
+    setTicketBusy(true)
+    const ok = await createTicket(session.user.id, ticketSubject.trim(), ticketDetails.trim(), 'ticket')
+    setTicketBusy(false)
+    if (!ok) { notify('Could not send that ticket.'); return }
+    setTicketSubject('')
+    setTicketDetails('')
+    notify('Ticket sent. We will reply here.')
+    const rows = await fetchTickets(session.user.id)
+    setTickets(rows)
+  }
+
+  async function claimDailyCoins() {
+    if (!session || !supabase) { notify('Sign in to claim coins.'); return }
+    const balance = await claimCoins()
+    if (balance === null) { notify('Could not claim coins. Try again tomorrow.'); return }
+    setCoins(balance)
+    notify('+20 coins added')
+  }
 
   // Persistent app settings. Every switch below is stored locally and the ones
   // that affect the app (playback, accessibility) are applied live.
   const defaultPrefs = {
     privateAccount: false, activityStatus: true, personalized: true,
-    notifyLikes: true, notifyComments: true, notifyFollows: true, notifyUploads: true, notifyAnnouncements: true,
+    notifyPush: true, notifyLikes: true, notifyComments: true, notifyFollows: true, notifyUploads: true, notifyAnnouncements: true,
     autoplay: true, startMuted: true, dataSaver: false, quality: 'auto', volume: 60,
     reduceMotion: false, largeText: false, highContrast: false, captions: false,
   }
@@ -3198,6 +3894,40 @@ export default function App() {
     notify('Draft discarded.')
   }
 
+  async function publishStory() {
+    if (!session || !supabase) { notify('Sign in to post a story.'); return }
+    if (!capturedFile) { notify('Record or choose a video first.'); return }
+    setUploading(true)
+    try {
+      const extension = capturedFile.name.split('.').pop()?.toLowerCase() || 'webm'
+      const storagePath = `${session.user.id}/${crypto.randomUUID()}.${extension}`
+      const { error: uploadError } = await supabase.storage.from('arc-videos').upload(storagePath, capturedFile, {
+        contentType: capturedFile.type || 'video/webm', upsert: false,
+      })
+      if (uploadError) throw uploadError
+      const { data: publicUrlData } = supabase.storage.from('arc-videos').getPublicUrl(storagePath)
+      const kind: 'image' | 'video' = capturedFile.type.startsWith('image/') ? 'image' : 'video'
+      const ok = await addStory(session.user.id, publicUrlData.publicUrl, caption.trim(), kind)
+      if (!ok) {
+        await supabase.storage.from('arc-videos').remove([storagePath])
+        throw new Error('Could not save your story')
+      }
+      const rows = await fetchStories(session.user.id, [])
+      setStories((current) => (rows.length ? toStoryList(rows) : current))
+      setCapturedUrl('')
+      setCapturedName('')
+      setCapturedFile(null)
+      setCaption('')
+      setRecordingSeconds(0)
+      setScreen('home')
+      notify('Story posted.')
+    } catch (error) {
+      notify(toErrorMessage(error, 'Story upload failed. Check your connection and try again.'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function publishVideo() {
     if (!capturedFile) { notify('Record or choose a video first.'); return }
     setUploading(true)
@@ -3313,7 +4043,6 @@ export default function App() {
   }
 
   /* --- search --- */
-  const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const q = searchQuery.trim().toLowerCase()
   const searchClipResults = useMemo(
@@ -3348,7 +4077,6 @@ export default function App() {
     const index = clips.findIndex((c) => c.id === clipId)
     if (index >= 0) {
       setScreen('home')
-      setSearchOpen(false)
       setTimeout(() => scrollToVideo(index), 60)
     }
   }
@@ -3399,7 +4127,7 @@ export default function App() {
         )}
         <div className="creator-mini">
         <Avatar initials={accountInitials} src={profile?.avatar_url} />
-        <span><strong>{accountName}{profile?.verified && <span className="badge badge-verified" title="Verified account">✔</span>}</strong><small>{accountHandle}</small></span>
+        <span><strong>{accountName}{profile?.verified && <Verified />}</strong><small>{accountHandle}</small></span>
         {isAdmin && <button className="sidebar-more" onClick={() => navigate('owner')} aria-label="Owner panel" title="Owner panel">⬛</button>}
         {!isAdmin && <button className="sidebar-more" onClick={() => navigate('settings')} aria-label="Account settings">•••</button>}
       </div>
@@ -3409,11 +4137,11 @@ export default function App() {
   <div className="main-area">
     <header className="topbar">
       <div className="mobile-brand"><span className="mobile-brand-mark"><VisualMark /></span>Visual</div>
-      <label className="searchbox" onClick={() => setSearchOpen(true)}><span className="searchbox-icon">⌕</span><input aria-label="Search" placeholder="Search creators, sounds, and videos" readOnly value="" /></label>
+      <label className="searchbox"><span className="searchbox-icon">⌕</span><input aria-label="Search" placeholder="Search creators, sounds, and videos" readOnly value="" onClick={() => navigate('discover')} /></label>
       <span className="topbar-spacer" />
       <span className="topbar-label">Make room for good things</span>
       <button className="top-profile" onClick={() => navigate('profile')} aria-label="Open profile"><Avatar initials={accountInitials} src={profile?.avatar_url} /></button>
-      <button className="phone-story-shortcut" onClick={() => openStory(2)} aria-label="Open stories"><Avatar initials="SK" src={stories[2].image} /></button>
+      <button className="phone-story-shortcut" onClick={() => openStory(2)} aria-label="Open stories"><Avatar initials="SK" src={stories[2]?.image} /></button>
       <button className="top-icon" onClick={() => navigate('studio')} aria-label="Open Studio">▥</button>
       <button className="top-icon" onClick={() => navigate('settings')} aria-label="Open settings">⚙</button>
       <button className="top-create" onClick={startCamera}>＋ Create</button>
@@ -3423,48 +4151,61 @@ export default function App() {
     <main className="main-content">
       {/* ================= HOME ================= */}
       <section className={`screen${screen === 'home' ? ' active' : ''}`} data-view="home" aria-label="Home feed">
-        <div className="feed-layout">
-          <div className="feed-main">
-            {/* Feed mode tabs: LIVE | Following | For you */}
-            <div className="feed-mode-tabs" role="tablist" aria-label="Feed mode">
+        <div className="top">
+          <span className="ib" aria-hidden="true" />
+          <div className="tabs" role="tablist" aria-label="Feed mode">
+            {(['live', 'following', 'for-you'] as const).map((tab) => (
               <button
+                key={tab}
                 type="button"
                 role="tab"
-                aria-selected={homeFeedTab === 'live'}
-                className={`feed-mode-tab live-tab${homeFeedTab === 'live' ? ' active' : ''}`}
-                onClick={() => setHomeFeedTab('live')}
+                aria-selected={homeFeedTab === tab}
+                onClick={() => setHomeFeedTab(tab)}
               >
-                <span className="live-dot" aria-hidden="true" />
-                LIVE
+                {tab === 'live' && <span className="dot" aria-hidden="true" />}
+                {tab === 'live' ? 'Live' : tab === 'following' ? 'Following' : 'For you'}
               </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={homeFeedTab === 'following'}
-                className={`feed-mode-tab${homeFeedTab === 'following' ? ' active' : ''}`}
-                onClick={() => setHomeFeedTab('following')}
-              >
-                Following
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={homeFeedTab === 'for-you'}
-                className={`feed-mode-tab${homeFeedTab === 'for-you' ? ' active' : ''}`}
-                onClick={() => setHomeFeedTab('for-you')}
-              >
-                For you
-              </button>
+            ))}
+          </div>
+          <button type="button" className="ib glass" aria-label="Search" onClick={() => navigate('discover')}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></svg>
+          </button>
+        </div>
+
+        {homeFeedTab === 'live' ? (
+          <div className="feed live-feed" aria-label="Live rooms">
+            <h2 className="live-feed-title">Live now</h2>
+            <p className="sub">Join in, say hi, send a heart.</p>
+            <div className="grid">
+              {liveRooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  className="th live-card"
+                  onClick={() => openLiveRoom(room)}
+                  aria-label={`Watch ${room.name} live: ${room.title}`}
+                >
+                  {room.image && <img src={room.image} alt="" />}
+                  <span className="badge">LIVE</span>
+                  <span className="view glass">▶ {formatCount(room.viewers)}</span>
+                  <span className="ov">
+                    {room.name}<Verified />
+                    <span className="live-card-title">{room.title}</span>
+                  </span>
+                </button>
+              ))}
             </div>
-            <div
-              className="video-layout"
-              ref={videoLayoutRef}
-              onScroll={handleFeedScroll}
-              onWheel={handleFeedWheel}
-              onTouchStart={handleFeedTouchStart}
-              onTouchEnd={handleFeedTouchEnd}
-              aria-label={homeFeedTab === 'following' ? 'Following videos' : homeFeedTab === 'live' ? 'Live videos' : 'For you videos'}
-            >
+          </div>
+        ) : (
+        <div
+          className="feed"
+          ref={videoLayoutRef}
+          onScroll={handleFeedScroll}
+          onWheel={handleFeedWheel}
+          onTouchStart={handleFeedTouchStart}
+          onTouchEnd={handleFeedTouchEnd}
+          aria-label={homeFeedTab === 'following' ? 'Following videos' : 'For you videos'}
+        >
               {feedClips.map((clip, index) => (
                 <VideoStage
                   key={clip.id}
@@ -3475,89 +4216,139 @@ export default function App() {
                   onLike={() => toggleLike(clip.id)}
                   onComments={() => setCommentsOpen(true)}
                   onShare={() => notify('Share link copied in this preview.')}
-                  onSave={() => notify('Saved to your collection.')}
-                  onSearch={() => setSearchOpen(true)}
-                  onRepost={handleRepost}
+                  onSave={() => toggleSave(clip)}
+                  saved={savedClips.has(clip.id)}
+                  onRepost={toggleRepost}
                   isPlaying={feedPlaying && activeClipIndex === index}
                   onPlayingChange={setFeedPlaying}
                   onOpenSoundDetail={openSoundDetail}
                   onOpenHashtag={openHashtag}
                   onOpenDuetStitch={openDuetStitch}
                   onDelete={handleDeleteVideo}
+                  onStory={addClipToStory}
+                  onCopyLink={copyClipLink}
+                  onReport={reportClip}
+                  reposted={repostedClips.has(clip.id)}
+                  following={followedHandles.has(clip.handle.replace(/^@/, '').toLowerCase())}
+                  onFollow={toggleFollow}
                   accountHandle={accountHandle}
                   notify={notify}
                   onMutedChange={setIsMuted}
                 />
               ))}
-            </div>
-
-            {/* Desktop floating Up/Down navigation buttons */}
-            <div className="feed-nav-arrows" aria-label="Navigate videos">
-              <button
-                className="feed-nav-btn prev"
-                aria-label="Previous video (Up Arrow)"
-                title="Previous video (Up Arrow)"
-                disabled={activeClipIndex === 0}
-                onClick={() => scrollToVideo(activeClipIndex - 1)}
-              >
-                ▲
-              </button>
-              <button
-                className="feed-nav-btn next"
-                aria-label="Next video (Down Arrow)"
-                title="Next video (Down Arrow)"
-                disabled={activeClipIndex === clips.length - 1}
-                onClick={() => scrollToVideo(activeClipIndex + 1)}
-              >
-                ▼
-              </button>
-            </div>
-          </div>
-          <aside className="feed-aside">
-            <section className="aside-panel">
-              <div className="panel-title"><strong>Trending now</strong><button onClick={() => navigate('discover')}>Explore all →</button></div>
-              {trends.map((trend, index) => (
-                <div className="trend-row" key={trend.tag}>
-                  <span className="trend-number">{String(index + 1).padStart(2, '0')}</span>
-                  <span><b>{trend.tag}</b><small>{trend.count}</small></span>
-                  <span className="trend-growth">{trend.growth}</span>
-                </div>
-              ))}
-            </section>
-            <section className="aside-panel">
-              <div className="panel-title"><strong>Creators to follow</strong><button onClick={() => notify('Suggestions refreshed.')}>Refresh</button></div>
-              {suggestedCreators.map((creator) => (
-                <div className="suggest-row" key={creator.name}>
-                  <Avatar initials={creator.initials} size={30} />
-                  <span><b>{creator.name}</b><small>{creator.meta}</small></span>
-                  <button className="follow-button">Follow</button>
-                </div>
-              ))}
-              <p className="panel-note">Your feed gets better when it sounds like you.</p>
-            </section>
-            <section className="aside-panel">
-              <div className="panel-title"><strong>Today on Visual</strong><span style={{ color: '#68c4ff', fontSize: 9 }}>02 / 05</span></div>
-              <p className="panel-note">New voices, good finds, and small moments worth keeping.</p>
-            </section>
-          </aside>
         </div>
+        )}
       </section>
 
       {/* ================= DISCOVER ================= */}
       <section className={`screen${screen === 'discover' ? ' active' : ''}`} data-view="discover" aria-label="Discover videos">
         <PageHead
           title="Discover"
-          subtitle="Find a new corner of the internet."
-          tools={<><button className="secondary-button">⌕ Search sounds</button><button className="primary-button">Explore tags</button></>}
+          subtitle="Different angles on everything."
         />
+        <label className="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></svg>
+          <input
+            type="search"
+            placeholder="Search creators, sounds and videos"
+            aria-label="Search creators, sounds and videos"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+        </label>
+        {q ? (
+          <>
+            <h3 className="discover-heading">Results for �{searchQuery.trim()}�</h3>
+            {searchClipResults.length > 0 && (
+              <div className="trend-list">
+                {searchClipResults.map((clip) => (
+                  <button
+                    key={`search-${clip.id}`}
+                    type="button"
+                    className="trend-list-row"
+                    onClick={() => { jumpToClip(clip.id) }}
+                  >
+                    <div><b>{clip.caption.slice(0, 42)}</b></div>
+                    <span>@{clip.handle}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {searchCreatorResults.length > 0 && (
+              <>
+                <h3 className="discover-heading">People</h3>
+                <div className="trend-list">
+                  {searchCreatorResults.map((person) => (
+                    <button
+                      key={`person-${person.handle}`}
+                      type="button"
+                      className="trend-list-row"
+                      onClick={() => navigate('profile-view')}
+                    >
+                      <div><b>{person.name}</b></div>
+                      <span>@{person.handle}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {searchSoundResults.length > 0 && (
+              <>
+                <h3 className="discover-heading">Sounds</h3>
+                <div className="trend-list">
+                  {searchSoundResults.map((sound) => (
+                    <button
+                      key={`sound-${sound.id}`}
+                      type="button"
+                      className="trend-list-row"
+                      onClick={() => openSoundDetail(sound)}
+                    >
+                      <div><b>{sound.title}</b></div>
+                      <span>{sound.artist}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {searchClipResults.length === 0 && searchCreatorResults.length === 0 && searchSoundResults.length === 0 && (
+              <p className="sub">No videos, people or sounds match that search yet.</p>
+            )}
+          </>
+        ) : (
+          <>
+        <div className="chips" role="group" aria-label="Discover categories">
+          {DISCOVER_CHIPS.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              className={`chip${discoverChip === chip ? ' active' : ''}`}
+              aria-pressed={discoverChip === chip}
+              onClick={() => setDiscoverChip(chip)}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+        <h3 className="discover-heading">Trending now</h3>
+        <div className="trend-list">
+          {trends.map((trend, index) => (
+            <div className="trend-list-row" key={trend.tag}>
+              <div><b>{index + 1}. #{trend.tag}</b></div>
+              <span>{trend.count}</span>
+            </div>
+          ))}
+        </div>
+        <h3 className="discover-heading">Picked for you</h3>
         <div className="discover-grid">
-          {discoverCards.map((card) => (
+          {visibleDiscoverCards.map((card) => (
             <article className="discover-card" key={card.title}>
               <img src={card.image} alt={card.alt} />
               <div className="discover-card-info"><strong>{card.title}</strong><small>{card.meta}</small></div>
             </article>
           ))}
         </div>
+          </>
+        )}
       </section>
 
       {/* ================= CREATE ================= */}
@@ -3570,8 +4361,8 @@ export default function App() {
         <div className="compose-layout">
           <div className="capture-preview">
             <video ref={videoRef} muted playsInline autoPlay style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }} />
-            <span className="capture-status">{isRecording ? `● RECORDING · ${recordingSeconds}s` : 'CAMERA PREVIEW'}</span>
-            <button className="capture-center" onClick={toggleRecord} aria-label={isRecording ? 'Stop recording' : 'Start camera'}>{isRecording ? '■' : '●'}</button>
+            <span className="capture-status">{isRecording ? `◝ RECORDING · ${recordingSeconds}s` : 'CAMERA PREVIEW'}</span>
+            <button className="capture-center" onClick={toggleRecord} aria-label={isRecording ? 'Stop recording' : 'Start camera'}>{isRecording ? '■' : '◝'}</button>
             <div className="capture-tools">
               <button aria-label="Filters" onClick={() => notify('Filters are coming soon.')}>✧</button>
               <button aria-label="Timer" onClick={() => notify('Timer is coming soon.')}>◷</button>
@@ -3606,7 +4397,7 @@ export default function App() {
         <PageHead
           title="Post"
           subtitle="Choose how this video appears to your audience."
-          tools={<button className="secondary-button" onClick={() => navigate('create')}>← Back to edit</button>}
+          tools={<button className="secondary-button" onClick={() => navigate('create')}>↝ Back to edit</button>}
         />
         <div className="compose-layout">
           <div className="capture-preview">
@@ -3636,6 +4427,7 @@ export default function App() {
             <div className="switch-row"><span>Show on profile</span><button className="switch" aria-label="Show on profile enabled" /></div>
             <div className="button-row">
               <button className="secondary-button" onClick={discardCapture}>Discard draft</button>
+              <button className="secondary-button" onClick={publishStory} disabled={uploading || !capturedFile}>Post to story</button>
               <button className="primary-button" onClick={publishVideo} disabled={uploading}>{uploading ? 'Publishing…' : 'Publish video'}</button>
             </div>
           </div>
@@ -3645,23 +4437,83 @@ export default function App() {
       {/* ================= CONVERSATION LIST (INBOX) ================= */}
       <section className={`screen${screen === 'message' ? ' active' : ''}`} data-view="message" aria-label="Messages">
         <PageHead
-          title="Messages"
-          subtitle="Your conversations"
+          title="Inbox"
+          subtitle="Replies, follows and messages."
           tools={
             <button className="primary-button" onClick={() => notify('New message feature coming soon')}>
-              ＋ New
+              ? New
             </button>
           }
         />
-        <ConversationList
-          conversations={filteredConversations}
-          onOpenChat={openChat}
-          onSearchChange={setMessageSearch}
-          searchQuery={messageSearch}
-          onCategoryChange={setChatCategory}
-          activeCategory={chatCategory}
-          onProfileClick={(_, e) => { e.stopPropagation(); setScreen('profile-view'); }}
-        />
+
+        <div className="strow" aria-label="Stories">
+          {stories.map((story, index) => (
+            <button
+              key={story.id}
+              type="button"
+              className="stb"
+              onClick={() => (index === 0 ? notify('Camera opens here to add a story') : openStory(index))}
+              aria-label={index === 0 ? 'Add to your story' : `Open ${story.name}'s story`}
+            >
+              <span className={`ring${index === 0 ? ' own' : ''}`}>
+                <Avatar initials={story.initials} src={story.image} />
+                {index === 0 && <span className="plus" aria-hidden="true">+</span>}
+              </span>
+              <span className="sn">{index === 0 ? 'Your story' : story.name.split(' ')[0]}</span>
+            </button>
+          ))}
+        </div>
+
+        <button type="button" className="sup" onClick={() => navigate('settings')}>
+          <span className="ic">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.3c-.7.4-1.1 1-1.1 1.8v.4" /><path d="M12 17.2h.01" /></svg>
+          </span>
+          <span style={{ textAlign: 'left' }}>
+            <b>Support</b>
+            <span className="s">Help, tickets and reporting</span>
+          </span>
+          <span className="ch">�</span>
+        </button>
+
+        <div className="tabs" role="tablist" aria-label="Inbox sections">
+          <button type="button" role="tab" aria-selected={inboxTab === 'activity'} onClick={() => setInboxTab('activity')}>Activity</button>
+          <button type="button" role="tab" aria-selected={inboxTab === 'messages'} onClick={() => setInboxTab('messages')}>Messages</button>
+        </div>
+
+        {inboxTab === 'activity' ? (
+          <div>
+            {inboxActivity.map((entry) => (
+              <div className="item" key={entry.id}>
+                <Avatar initials={initialsOf(entry.name)} size={40} />
+                <div className="t">
+                  <b>{entry.name}</b>
+                  <span>{entry.text}</span>
+                </div>
+                <small>{entry.time}</small>
+                {entry.followBack ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ padding: '7px 14px', fontSize: 13, borderRadius: 12 }}
+                    onClick={() => notify(`Followed ${entry.name}`)}
+                  >
+                    Follow back
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <ConversationList
+            conversations={filteredConversations}
+            onOpenChat={openChat}
+            onSearchChange={setMessageSearch}
+            searchQuery={messageSearch}
+            onCategoryChange={setChatCategory}
+            activeCategory={chatCategory}
+            onProfileClick={(_, e) => { e.stopPropagation(); setScreen('profile-view'); }}
+          />
+        )}
       </section>
 
       {/* ================= CHAT SCREEN ================= */}
@@ -3732,7 +4584,7 @@ export default function App() {
         </div>
         <div className="profile-summary">
           <span className="avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt={`${accountName} profile`} /> : accountInitials}</span>
-          <div className="profile-details"><h2>{accountName}{profile?.verified && <span className="badge badge-verified" title="Verified account">✔</span>}</h2><p>{accountHandle} · Portland, OR</p></div>
+        <div className="profile-details"><h2>{accountName}{profile?.verified && <Verified />}</h2><p>{accountHandle} � Portland, OR</p></div>
           <button className="secondary-button" onClick={() => navigate('studio')}>Open Studio</button>
         </div>
         <div className="profile-stats">
@@ -3742,13 +4594,27 @@ export default function App() {
           <span><b>82.4K</b> likes</span>
         </div>
         <p className="profile-bio">{profile?.bio || 'Collecting small moments, good food, and places with no signal. Here for the things that make an ordinary day feel like yours.'}</p>
-        <div className="profile-tabs">
-          {['Videos', 'Liked', 'Saved', 'Collections'].map((tab, index) => (
-            <button key={tab} className={index === 0 ? 'active' : ''} onClick={() => notify(`${tab} tab selected.`)}>{tab}</button>
+        <div className="profile-tabs" role="tablist" aria-label="Profile sections">
+          {([
+            ['videos', 'Videos'],
+            ['reposts', 'Reposts'],
+            ['liked', 'Liked'],
+            ['saved', 'Saved'],
+            ['collections', 'Collections'],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={profileTab === id}
+              className={profileTab === id ? 'active' : ''}
+              onClick={() => setProfileTab(id)}
+            >
+              {label}
+            </button>
           ))}
         </div>
         <div className="profile-grid">
-          {myClips.length > 0 ? (
+          {profileTab === 'videos' && (myClips.length > 0 ? (
             myClips.map((clip) => (
               <button
                 className="profile-tile"
@@ -3768,78 +4634,368 @@ export default function App() {
                 <span>▶ {tile.views}</span>
               </button>
             ))
+          ))}
+          {profileTab === 'reposts' && (repostedClips.size > 0 ? (
+            clips
+              .filter((clip) => repostedClips.has(clip.id))
+              .map((clip) => (
+                <button
+                  key={`repost-${clip.id}`}
+                  className="profile-tile"
+                  onClick={() => setProfileVideoPlayer(clip)}
+                  aria-label={`Reposted video: ${clip.caption}`}
+                >
+                  {clip.videoSrc ? <video src={clip.videoSrc} muted playsInline crossOrigin="anonymous" /> : <img src={clip.image} alt={clip.imageAlt} />}
+                  <span className="tile-badge">Reposted</span>
+                </button>
+              ))
+          ) : (
+            <p className="sub">Videos you repost show up here. Long-press a video to repost it.</p>
+          ))}
+          {profileTab === 'liked' && (likedClips.length > 0 ? (
+            likedClips.map((clip) => (
+              <button key={`liked-${clip.id}`} className="profile-tile" onClick={() => setProfileVideoPlayer(clip)} aria-label={`Liked video: ${clip.caption}`}>
+                {clip.videoSrc ? <video src={clip.videoSrc} muted playsInline crossOrigin="anonymous" /> : <img src={clip.image} alt={clip.imageAlt} />}
+                <span>♥ Liked</span>
+              </button>
+            ))
+          ) : (
+            <p className="sub">Videos you like show up here.</p>
+          ))}
+          {profileTab === 'saved' && (savedClipsList.length > 0 ? (
+            savedClipsList.map((clip) => (
+              <button key={`saved-${clip.id}`} className="profile-tile" onClick={() => setProfileVideoPlayer(clip)} aria-label={`Saved video: ${clip.caption}`}>
+                {clip.videoSrc ? <video src={clip.videoSrc} muted playsInline crossOrigin="anonymous" /> : <img src={clip.image} alt={clip.imageAlt} />}
+                <span>🔖 Saved</span>
+              </button>
+            ))
+          ) : (
+            <p className="sub">Tap Save on a video to keep it here.</p>
+          ))}
+          {profileTab === 'collections' && (
+            <>
+              {['Slow mornings', 'No-signal trips', 'Dinner for six', 'Blue hour'].map((name, index) => (
+                <div className="col" key={name}>
+                  {name}
+                  <span>{[12, 8, 5, 21][index]} videos</span>
+                </div>
+              ))}
+            </>
           )}
         </div>
       </section>
 
       {/* ================= SETTINGS ================= */}
       <section className={`screen${screen === 'settings' ? ' active' : ''}`} data-view="settings" aria-label="Settings">
-        <PageHead title="Settings" subtitle="Shape your account and your experience." />
-        <div className="settings-layout">
-          <nav className="settings-nav">
-            {SETTINGS_SECTIONS.map((section) => (
-              <button key={section} className={settingsSection === section ? 'active' : ''} onClick={() => setSettingsSection(section)}>{section}</button>
-            ))}
-          </nav>
-          <section className="settings-content">
-            {settingsSection === 'Account' && (
-              <>
-                <h2>Account</h2>
-                <p>Who you are on Visual.</p>
-                <div className="setting-item"><span><b>Display name</b><small>{accountName}</small></span><button className="secondary-button" onClick={beginProfileEdit}>Edit</button></div>
-                <div className="setting-item"><span><b>Username</b><small>{accountHandle}</small></span><button className="secondary-button" onClick={beginProfileEdit}>Edit</button></div>
-                <div className="setting-item"><span><b>Email</b><small>{session?.user.email ?? 'Not signed in'}</small></span><span className="pill on-blue">{session ? 'Verified' : 'Guest'}</span></div>
-                <div className="setting-item"><span><b>Profile photos</b><small>Avatar and banner</small></span><button className="secondary-button" onClick={beginProfileEdit}>Change</button></div>
-                {session && <div className="button-row"><button className="secondary-button" onClick={() => { void supabase?.auth.signOut(); notify('Signed out.'); setScreen('home') }}>Sign out</button></div>}
-                {!session && <div className="button-row"><button className="primary-button" onClick={() => openAuth('signin')}>Sign in</button><button className="secondary-button" onClick={() => openAuth('signup')}>Create account</button></div>}
-              </>
-            )}
-            {settingsSection === 'Privacy' && (
-              <>
-                <h2>Privacy</h2>
-                <p>Control who sees you and your posts.</p>
-                <div className="setting-item"><span><b>Private account</b><small>Only approved followers can see your posts.</small></span><input type="checkbox" checked={prefs.privateAccount} onChange={(e) => setPref('privateAccount', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Activity status</b><small>Let people you follow see when you are active.</small></span><input type="checkbox" checked={prefs.activityStatus} onChange={(e) => setPref('activityStatus', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Personalized recommendations</b><small>Use your interests to tune your For you feed.</small></span><input type="checkbox" checked={prefs.personalized} onChange={(e) => setPref('personalized', e.target.checked)} /></div>
-                <label className="field">Who can send you messages<select defaultValue="followers"><option value="everyone">Everyone</option><option value="followers">Followers you follow back</option><option value="nobody">Nobody</option></select></label>
-                <label className="field">Who can duet / remix your videos<select defaultValue="everyone"><option value="everyone">Everyone</option><option value="followers">Followers</option><option value="nobody">Nobody</option></select></label>
-              </>
-            )}
-            {settingsSection === 'Notifications' && (
-              <>
-                <h2>Notifications</h2>
-                <p>Choose what reaches you.</p>
-                <div className="setting-item"><span><b>Likes</b><small>When someone likes your video.</small></span><input type="checkbox" checked={prefs.notifyLikes} onChange={(e) => setPref('notifyLikes', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Comments</b><small>Replies and mentions.</small></span><input type="checkbox" checked={prefs.notifyComments} onChange={(e) => setPref('notifyComments', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>New followers</b><small>When someone follows you.</small></span><input type="checkbox" checked={prefs.notifyFollows} onChange={(e) => setPref('notifyFollows', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Uploads from creators</b><small>New videos from people you follow.</small></span><input type="checkbox" checked={prefs.notifyUploads} onChange={(e) => setPref('notifyUploads', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Announcements</b><small>Platform news from the owner.</small></span><input type="checkbox" checked={prefs.notifyAnnouncements} onChange={(e) => setPref('notifyAnnouncements', e.target.checked)} /></div>
-              </>
-            )}
-            {settingsSection === 'Playback' && (
-              <>
-                <h2>Playback</h2>
-                <p>How videos play in your feed.</p>
-                <div className="setting-item"><span><b>Autoplay videos</b><small>Start playing when a video fills the screen.</small></span><input type="checkbox" checked={prefs.autoplay} onChange={(e) => setPref('autoplay', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Start muted</b><small>Videos begin silent until you unmute.</small></span><input type="checkbox" checked={prefs.startMuted} onChange={(e) => setPref('startMuted', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Data saver</b><small>Use less data when you are not on Wi-Fi.</small></span><input type="checkbox" checked={prefs.dataSaver} onChange={(e) => setPref('dataSaver', e.target.checked)} /></div>
-                <label className="field">Video quality<select value={prefs.quality} onChange={(e) => setPref('quality', e.target.value)}><option value="auto">Auto</option><option value="high">High (1080p)</option><option value="medium">Medium (720p)</option><option value="low">Low (480p)</option></select></label>
-                <label className="field">Default volume<b className="volume-value">{prefs.volume}%</b><input type="range" min={0} max={100} value={prefs.volume} onChange={(e) => setPref('volume', Number(e.target.value))} aria-label="Default volume" /></label>
-              </>
-            )}
-            {settingsSection === 'Accessibility' && (
-              <>
-                <h2>Accessibility</h2>
-                <p>Make Visual easier to see and use. Changes apply immediately.</p>
-                <div className="setting-item"><span><b>Reduce motion</b><small>Turn off animated transitions and the rotating sound disc.</small></span><input type="checkbox" checked={prefs.reduceMotion} onChange={(e) => setPref('reduceMotion', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Larger text</b><small>Increase the size of text across the app.</small></span><input type="checkbox" checked={prefs.largeText} onChange={(e) => setPref('largeText', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>High contrast</b><small>Stronger borders and brighter text.</small></span><input type="checkbox" checked={prefs.highContrast} onChange={(e) => setPref('highContrast', e.target.checked)} /></div>
-                <div className="setting-item"><span><b>Captions</b><small>Show captions on videos when available.</small></span><input type="checkbox" checked={prefs.captions} onChange={(e) => setPref('captions', e.target.checked)} /></div>
-              </>
-            )}
-            <p className="field-help">Preferences are saved automatically on this device.</p>
-          </section>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <button type="button" className="ib glass" onClick={() => navigate('profile')} aria-label="Back">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+          </button>
+          <h1 style={{ fontSize: 24 }}>Settings</h1>
         </div>
+        {settingsView === 'main' && (
+          <>
+            <h3>Account</h3>
+            <button type="button" className="srow" onClick={() => notify(`${accountName} · ${accountHandle}`)}>
+              Account info<span className="ch">›</span>
+            </button>
+            <div className="srow">
+              Private account
+              <button
+                type="button"
+                className="sw"
+                role="switch"
+                aria-checked={prefs.privateAccount}
+                aria-label="Private account"
+                onClick={() => setPref('privateAccount', !prefs.privateAccount)}
+              />
+            </div>
+            <button type="button" className="srow" onClick={() => setBlockedOpen(true)}>
+              Blocked users<span className="ch">{blockedUsers.length > 0 ? `${blockedUsers.length} ›` : '›'}</span>
+            </button>
+
+            <h3>Preferences</h3>
+            <div className="srow">
+              Push notifications
+              <button
+                type="button"
+                className="sw"
+                role="switch"
+                aria-checked={prefs.notifyPush}
+                aria-label="Push notifications"
+                onClick={() => setPref('notifyPush', !prefs.notifyPush)}
+              />
+            </div>
+            <div className="srow">
+              Data saver
+              <button
+                type="button"
+                className="sw"
+                role="switch"
+                aria-checked={prefs.dataSaver}
+                aria-label="Data saver"
+                onClick={() => setPref('dataSaver', !prefs.dataSaver)}
+              />
+            </div>
+            <div className="srow">
+              Captions on by default
+              <button
+                type="button"
+                className="sw"
+                role="switch"
+                aria-checked={prefs.captions}
+                aria-label="Captions"
+                onClick={() => setPref('captions', !prefs.captions)}
+              />
+            </div>
+            <button type="button" className="srow" onClick={() => notify('Language is set to English.')}>
+              Language<span className="ch">English ›</span>
+            </button>
+            <button type="button" className="srow" onClick={() => setSettingsView('more')}>
+              More preferences<span className="ch">›</span>
+            </button>
+
+            <h3>Support</h3>
+            <button type="button" className="srow" onClick={() => { setSupportView('home'); setSettingsView('support') }}>
+              Help &amp; support<span className="ch">›</span>
+            </button>
+            <button type="button" className="srow" onClick={() => { setSupportView('new'); setSettingsView('support') }}>
+              Report a problem<span className="ch">›</span>
+            </button>
+            <button type="button" className="srow" onClick={() => notify('Community guidelines')}>
+              Community guidelines<span className="ch">›</span>
+            </button>
+            {session ? (
+              <button
+                type="button"
+                className="srow"
+                style={{ color: '#ff5a6e', border: 0 }}
+                onClick={() => { void supabase?.auth.signOut(); notify('Signed out.'); setScreen('home') }}
+              >
+                Log out
+              </button>
+            ) : (
+              <div className="button-row">
+                <button className="primary-button" onClick={() => openAuth('signin')}>Sign in</button>
+                <button className="secondary-button" onClick={() => openAuth('signup')}>Create account</button>
+              </div>
+            )}
+          </>
+        )}
+
+        {settingsView === 'more' && (
+          <>
+            <div className="row" style={{ marginBottom: 10 }}>
+              <button type="button" className="ib glass" onClick={() => setSettingsView('main')} aria-label="Back">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+              </button>
+              <h1 style={{ fontSize: 22 }}>More preferences</h1>
+            </div>
+
+            <h3>Privacy</h3>
+            <div className="setting-item">
+              <span><b>Activity status</b><small>Let people you follow see when you are active.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.activityStatus} aria-label="Activity status" onClick={() => setPref('activityStatus', !prefs.activityStatus)} />
+            </div>
+            <div className="setting-item">
+              <span><b>Personalized recommendations</b><small>Use your interests to tune your For you feed.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.personalized} aria-label="Personalized recommendations" onClick={() => setPref('personalized', !prefs.personalized)} />
+            </div>
+            <label className="field">Who can send you messages
+              <select defaultValue="followers"><option value="everyone">Everyone</option><option value="followers">Followers you follow back</option><option value="nobody">Nobody</option></select>
+            </label>
+            <label className="field">Who can duet / remix your videos
+              <select defaultValue="everyone"><option value="everyone">Everyone</option><option value="followers">Followers</option><option value="nobody">Nobody</option></select>
+            </label>
+
+            <h3>Notifications</h3>
+            <div className="setting-item">
+              <span><b>Likes</b><small>When someone likes your video.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.notifyLikes} aria-label="Likes" onClick={() => setPref('notifyLikes', !prefs.notifyLikes)} />
+            </div>
+            <div className="setting-item">
+              <span><b>Comments</b><small>Replies and mentions.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.notifyComments} aria-label="Comments" onClick={() => setPref('notifyComments', !prefs.notifyComments)} />
+            </div>
+            <div className="setting-item">
+              <span><b>New followers</b><small>When someone follows you.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.notifyFollows} aria-label="New followers" onClick={() => setPref('notifyFollows', !prefs.notifyFollows)} />
+            </div>
+            <div className="setting-item">
+              <span><b>Uploads from creators</b><small>New videos from people you follow.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.notifyUploads} aria-label="Uploads from creators" onClick={() => setPref('notifyUploads', !prefs.notifyUploads)} />
+            </div>
+            <div className="setting-item">
+              <span><b>Announcements</b><small>Platform news from the owner.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.notifyAnnouncements} aria-label="Announcements" onClick={() => setPref('notifyAnnouncements', !prefs.notifyAnnouncements)} />
+            </div>
+
+            <h3>Playback</h3>
+            <div className="setting-item">
+              <span><b>Autoplay videos</b><small>Start playing when a video fills the screen.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.autoplay} aria-label="Autoplay videos" onClick={() => setPref('autoplay', !prefs.autoplay)} />
+            </div>
+            <div className="setting-item">
+              <span><b>Start muted</b><small>Videos begin silent until you unmute.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.startMuted} aria-label="Start muted" onClick={() => setPref('startMuted', !prefs.startMuted)} />
+            </div>
+            <label className="field">Video quality
+              <select value={prefs.quality} onChange={(e) => setPref('quality', e.target.value)}><option value="auto">Auto</option><option value="high">High (1080p)</option><option value="medium">Medium (720p)</option><option value="low">Low (480p)</option></select>
+            </label>
+            <label className="field">Default volume<b className="volume-value">{prefs.volume}%</b>
+              <input type="range" min={0} max={100} value={prefs.volume} onChange={(e) => setPref('volume', Number(e.target.value))} aria-label="Default volume" />
+            </label>
+
+            <h3>Accessibility</h3>
+            <div className="setting-item">
+              <span><b>Reduce motion</b><small>Turn off animated transitions and the rotating sound disc.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.reduceMotion} aria-label="Reduce motion" onClick={() => setPref('reduceMotion', !prefs.reduceMotion)} />
+            </div>
+            <div className="setting-item">
+              <span><b>Larger text</b><small>Increase the size of text across the app.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.largeText} aria-label="Larger text" onClick={() => setPref('largeText', !prefs.largeText)} />
+            </div>
+            <div className="setting-item">
+              <span><b>High contrast</b><small>Stronger borders and brighter text.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.highContrast} aria-label="High contrast" onClick={() => setPref('highContrast', !prefs.highContrast)} />
+            </div>
+            <div className="setting-item">
+              <span><b>Captions</b><small>Show captions on videos when available.</small></span>
+              <button type="button" className="sw" role="switch" aria-checked={prefs.captions} aria-label="Captions" onClick={() => setPref('captions', !prefs.captions)} />
+            </div>
+          </>
+        )}
+
+        {settingsView === 'support' && (
+          <>
+            <div className="row" style={{ marginBottom: 10 }}>
+              <button type="button" className="ib glass" onClick={() => setSettingsView('main')} aria-label="Back">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+              </button>
+              <h1 style={{ fontSize: 22 }}>Support</h1>
+            </div>
+            <p className="sub">How can we help today?</p>
+            <div className="stat">
+              <span className="dot" style={{ background: 'currentColor' }} aria-hidden="true" />
+              Typically replies within 2 hours
+            </div>
+            <button type="button" className="opt" onClick={() => setSupportView('tickets')}>
+              <span className="sic">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v3a3 3 0 0 0 0 6v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a3 3 0 0 0 0-6z" /></svg>
+              </span>
+              <span>
+                <b>My tickets</b>
+                <span className="s">Track and reply to requests</span>
+              </span>
+              {tickets.filter((ticket) => ticket.status !== 'done').length > 0 && (
+                <span className="nb2">{tickets.filter((ticket) => ticket.status !== 'done').length}</span>
+              )}
+            </button>
+            <button type="button" className="opt" onClick={() => setSupportView('new')}>
+              <span className="sic">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4M5 4h12l-2 4 2 4H5" /></svg>
+              </span>
+              <span>
+                <b>Report a problem</b>
+                <span className="s">Bugs, payments, abuse or content</span>
+              </span>
+            </button>
+            <button type="button" className="opt" onClick={() => setSupportView('chat')}>
+              <span className="sic">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
+              </span>
+              <span>
+                <b>Chat with us</b>
+                <span className="s">Talk to a person, 8am–8pm</span>
+              </span>
+            </button>
+
+            {supportView === 'tickets' && (
+              <div style={{ marginTop: 16 }}>
+                <div className="tabs" role="tablist" aria-label="Ticket filters">
+                  {(['all', 'active', 'done'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      role="tab"
+                      aria-selected={ticketFilter === filter}
+                      onClick={() => setTicketFilter(filter)}
+                    >
+                      {filter === 'all' ? 'All' : filter === 'active' ? 'Active' : 'Resolved'}
+                    </button>
+                  ))}
+                </div>
+                {tickets
+                  .filter((ticket) => ticketFilter === 'all' || (ticketFilter === 'done' ? ticket.status === 'done' : ticket.status !== 'done'))
+                  .map((ticket) => (
+                    <div className="tk" key={ticket.id}>
+                      <div className="row" style={{ justifyContent: 'space-between' }}>
+                        <small>{ticket.id.slice(0, 10)}</small>
+                        <span className={`pill ${ticket.status === 'done' ? 'done' : ticket.status === 'wait' ? 'wait' : 'open'}`}>
+                          {ticket.status === 'done' ? 'Resolved' : ticket.status === 'wait' ? 'Needs reply' : 'Open'}
+                        </span>
+                      </div>
+                      <b>{ticket.subject}</b>
+                      <small>{ticket.kind} · {timeAgo(ticket.created_at)}</small>
+                    </div>
+                  ))}
+                {tickets.length === 0 && <p className="sub">Nothing here yet.</p>}
+                <button type="button" className="btn" style={{ width: '100%', marginTop: 6 }} onClick={() => setSupportView('new')}>New ticket</button>
+              </div>
+            )}
+
+            {supportView === 'new' && (
+              <div style={{ marginTop: 16 }}>
+                <div className="setting-item">
+                  <span><b>Coin balance</b><small>{coins === null ? 'Sign in to see your balance' : `${coins} coins`}</small></span>
+                  <button className="secondary-button" onClick={claimDailyCoins} disabled={!session}>Claim 20 free</button>
+                </div>
+                <label className="field">Subject<input value={ticketSubject} onChange={(e) => setTicketSubject(e.target.value)} maxLength={120} placeholder="Short summary" /></label>
+                <label className="field">What happened?<textarea value={ticketDetails} onChange={(e) => setTicketDetails(e.target.value)} placeholder="Steps to reproduce, what you saw, what you expected" /></label>
+                <div className="button-row">
+                  <button className="primary-button" onClick={submitTicket} disabled={ticketBusy || !ticketSubject.trim() || !ticketDetails.trim()}>
+                    {ticketBusy ? 'Sending…' : 'Send ticket'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {supportView === 'chat' && (
+              <div style={{ marginTop: 16 }}>
+                <div className="tl" style={{ minHeight: 160 }}>
+                  <div className="msg them">Hi! What can we help you with?</div>
+                  {supportChat.map((line) => (
+                    <div className={`msg ${line.mine ? 'me' : 'them'}`} key={line.id}>{line.text}</div>
+                  ))}
+                </div>
+                <form
+                  className="cin"
+                  style={{ marginTop: 10 }}
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    const text = supportDraft.trim()
+                    if (!text) return
+                    setSupportChat((current) => [...current, { id: Date.now(), mine: true, text }])
+                    setSupportDraft('')
+                    window.setTimeout(() => {
+                      setSupportChat((current) => [...current, { id: Date.now() + 1, mine: false, text: 'Thanks, we are looking into it. Can you share your account email?' }])
+                    }, 1400)
+                  }}
+                >
+                  <input
+                    placeholder="Type a message"
+                    aria-label="Message support"
+                    value={supportDraft}
+                    onChange={(event) => setSupportDraft(event.target.value)}
+                  />
+                  <button type="submit" className="btn">Send</button>
+                </form>
+              </div>
+            )}
+
+            <p className="field-help">Preferences are saved automatically on this device.</p>
+          </>
+        )}
       </section>
 
       {/* ================= STUDIO ================= */}
@@ -3847,7 +5003,7 @@ export default function App() {
         <PageHead
           title="Studio"
           subtitle="Your videos are finding their people."
-          tools={<><button className="secondary-button">Last 30 days⌄</button><button className="primary-button" onClick={startCamera}>＋ New video</button></>}
+          tools={<><button className="secondary-button">Last 30 days?</button><button className="primary-button" onClick={startCamera}>? New video</button></>}
         />
 
         <nav className="studio-tabs" aria-label="Studio sections">
@@ -4070,7 +5226,7 @@ export default function App() {
             </div>
             {studioGifts.map((gift) => (
               <div className="top-video" key={gift.id}>
-                <span className="sound-cover">🎁</span>
+                <span className="sound-cover">🎝</span>
                 <span><b>{gift.name}</b><small>{gift.count.toLocaleString()} sent · from {gift.from}</small></span>
                 <strong>{(gift.count * gift.coins).toLocaleString()} coins</strong>
               </div>
@@ -4106,69 +5262,34 @@ export default function App() {
     </main>
   </div>
 
-  {/* ---------- Comments modal ---------- */ }
-  <Modal open={commentsOpen} onClose={() => setCommentsOpen(false)} labelledBy="comments-title" className="comments-card">
-    <ModalHead title="Comments" subtitle="6,432 responses" onClose={() => setCommentsOpen(false)} />
-    <div className="comment-list">
-      {commentList.map((comment) => (
-        <div className="comment-row" key={comment.id}>
-          <Avatar initials={comment.initials} />
-          <div>
-            <b>{comment.author} <small>{comment.time}</small></b>
-            <p dangerouslySetInnerHTML={{ __html: comment.text.split(' ').map((word) => {
-              if (word.startsWith('#')) {
-                const tag = hashtags.find((h) => h.tag.toLowerCase() === word.toLowerCase())
-                return tag ? `<button class="hashtag-link" onclick="event.stopPropagation();">${word}</button>` : word
-              }
-              if (word.startsWith('@')) {
-                return `<span class="mention-link">${word}</span>`
-              }
-              return word
-            }).join(' ') }} />
-            <div className="comment-actions">
-              <button className="comment-like" onClick={() => setLikedComments((current) => ({ ...current, [comment.id]: !current[comment.id] }))}>
-                {likedComments[comment.id] ? '♥' : '♡'} {comment.likes + (likedComments[comment.id] ? 1 : 0)}
-              </button>
-              <button className="comment-reply-btn" onClick={() => setShowReplyInput(comment.id)}>
-                Reply
-              </button>
-            </div>
-            <CommentRepliesComponent
-              replies={commentReplies[comment.id] || []}
-              onAddReply={(text) => addCommentReply(comment.id, text)}
-              onLikeReply={likeCommentReply}
-              accountInitials={accountInitials}
-              onOpenHashtag={openHashtag}
-            />
-            {showReplyInput === comment.id && (
-              <form className="reply-compose" onSubmit={(e) => { e.preventDefault(); if (replyDraft.trim()) { addCommentReply(comment.id, replyDraft.trim()); setReplyDraft(''); setShowReplyInput(null) } }}>
-                <Avatar initials={accountInitials} size={28} />
-                <input placeholder="Add a reply..." value={replyDraft} onChange={(e) => setReplyDraft(e.target.value)} autoFocus />
-                <button type="submit" className="primary-button" disabled={!replyDraft.trim()}>Reply</button>
-                <button type="button" className="secondary-button" onClick={() => { setReplyDraft(''); setShowReplyInput(null) }}>Cancel</button>
-              </form>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-    <form className="comment-compose" onSubmit={submitComment}>
-      <Avatar initials={accountInitials} size={30} />
-      <input placeholder="Add a thoughtful comment..." aria-label="Add a comment" value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} />
-      <button className="primary-button">Post</button>
-    </form>
-  </Modal>
-
+  {/* ---------- Comments sheet (preview parity) ---------- */}
+  <CommentsSheet
+    clip={activeClip}
+    open={commentsOpen}
+    onClose={() => setCommentsOpen(false)}
+  />
   {/* ---------- Story viewer ---------- */ }
   <div className={`story-overlay${storyOpen ? ' open' : ''}`} aria-hidden={!storyOpen}>
-    <section className="story-viewer" role="dialog" aria-modal="true" aria-label="Story viewer">
-      <img src={currentStory.image} alt={`${currentStory.name} story`} />
+      <section className="story-viewer" role="dialog" aria-modal="true" aria-label="Story viewer">
+      {currentStory.video ? (
+        <video
+          key={currentStory.id}
+          src={currentStory.video}
+          autoPlay
+          loop
+          muted
+          playsInline
+          style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, objectFit: 'cover' }}
+        />
+      ) : (
+        <img src={currentStory.image} alt={`${currentStory.name} story`} />
+      )}
       <div className="story-scrim" />
       <div className="story-progress">{stories.map((story, index) => <i key={story.id} className={index <= storyIndex ? 'on' : ''} />)}</div>
       <header className="story-view-head">
         <button className="story-view-back" onClick={() => setStoryOpen(false)} aria-label="Close story">‹</button>
         <Avatar initials={currentStory.initials} />
-        <span><b>{currentStory.name}</b><small>{currentStory.time}</small></span>
+        <span><b>{currentStory.name}{currentStory.name !== 'Your story' && <Verified />}</b><small>{currentStory.time}</small></span>
         <button className="story-view-close" onClick={() => setStoryOpen(false)} aria-label="Close story">×</button>
       </header>
       <button className="story-skip story-prev" onClick={() => moveStory(-1)} aria-label="Previous story">‹</button>
@@ -4176,7 +5297,16 @@ export default function App() {
       <div className="story-view-caption">{currentStory.caption}</div>
       <form className="story-reply" onSubmit={submitStoryReply}>
         <input placeholder="Reply to story..." aria-label="Reply to story" value={storyReply} onChange={(event) => setStoryReply(event.target.value)} />
-        <button aria-label="Send reply">➤</button>
+        <button type="submit" aria-label="Send reply">?</button>
+        <button
+          type="button"
+          className={`ib glass${storyLiked ? ' lk' : ''}`}
+          aria-pressed={storyLiked}
+          aria-label="Like story"
+          onClick={() => setStoryLiked((value) => !value)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill={storyLiked ? 'currentColor' : 'none'}><path d="M12 20.5S3.5 15 3.5 9A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.5 2c0 6-8.5 11.5-8.5 11.5z" /></svg>
+        </button>
       </form>
     </section>
   </div>
@@ -4238,73 +5368,169 @@ export default function App() {
 
   {/* ---------- Live viewer ---------- */ }
   <div className={`live-overlay${liveOpen ? ' open' : ''}`} aria-hidden={!liveOpen}>
-    <section className="live-viewer" role="dialog" aria-modal="true" aria-label="Live preview">
-      <img src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=85" alt="Coastal live stream preview" />
+    <section className="live-viewer" role="dialog" aria-modal="true" aria-label="Live room">
+      {liveRoom && <img src={liveRoom.image} alt="" />}
       <div className="live-shade" />
+      <div className="live-hearts" aria-hidden="true">
+        {liveHearts.map((id) => (
+          <span className="live-heart-pop" key={id}>♥</span>
+        ))}
+      </div>
       <header className="live-view-head">
-        <span className="live-badge">● LIVE</span>
-        <Avatar initials="AR" />
-        <span><b>Ari Rivera</b><small>2.4K watching</small></span>
-        <button className="modal-close" onClick={() => setLiveOpen(false)} aria-label="Close live preview">×</button>
+        <span className="live-badge">LIVE</span>
+        <Avatar initials={liveRoom?.initials ?? 'AR'} src={profile?.avatar_url} />
+        <span className="live-host">
+        <b>{liveRoom?.name ?? 'Ari Rivera'}{liveRoom && <Verified />}</b>
+          <small>{liveRoom?.title ?? 'Blue hour walk, ask me anything'}</small>
+        </span>
+        <button type="button" className="live-viewers-pill glass" onClick={() => setViewersOpen(true)} aria-label="People watching">
+          <span className="stack" aria-hidden="true">
+            {liveViewersList.slice(0, 3).map((person) => (
+              <Avatar key={person.handle} initials={initialsOf(person.name)} size={26} />
+            ))}
+          </span>
+          <b>{formatCount(liveViewers)}</b>
+        </button>
+        <button type="button" className="modal-close" onClick={closeLiveRoom} aria-label="Leave live">�</button>
       </header>
-      <div className="live-chat">{liveChat.map((message) => <p key={message.id}><b>{message.name}</b> {message.text}</p>)}</div>
+
+      <div className="gbans" aria-live="polite">
+        {giftBanners.map((banner) => (
+          <div className="gban" key={banner.id}>
+            <Avatar initials={initialsOf('You')} size={30} />
+            <div>
+              <b>You</b>
+              <span>sent {banner.gift}</span>
+            </div>
+            <span className="gem">{giftEmoji(banner.gift)}</span>
+          </div>
+        ))}
+      </div>
+
+      {giftBurst && (
+        <div className={`gfx${giftBurst.big ? ' big' : ''}`} key={giftBurst.id} aria-hidden="true">
+          {giftBurst.big && <span className="flash" />}
+          <span className="gbig">{giftEmoji(giftBurst.gift)}</span>
+          {giftBurst.big && Array.from({ length: 12 }).map((_, index) => (
+            <i className="spk" key={index} style={{ '--a': `${(index / 12) * 360}deg` } as React.CSSProperties} />
+          ))}
+        </div>
+      )}
+
+      <div className="live-chat">
+        {liveChat.map((message) => (
+          <p key={message.id}>
+            <Avatar initials={initialsOf(message.name)} size={26} />
+            <span><b>{message.name}</b> {message.text}</span>
+          </p>
+        ))}
+      </div>
+
+      {viewersOpen && (
+        <div className="sheet open" role="dialog" aria-modal="true" aria-label="People watching">
+          <div className="scrim" onClick={() => setViewersOpen(false)} />
+          <div className="panel">
+            <div className="grab" />
+            <div className="chead">
+              <div>
+                <b>{formatCount(liveViewers)} watching</b>
+                <div className="lv">People in this live</div>
+              </div>
+              <button type="button" className="ib" onClick={() => setViewersOpen(false)} aria-label="Close viewers">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+            <div className="clist">
+              {liveViewersList.map((person) => (
+                <div className="item" key={person.handle}>
+                  <Avatar initials={initialsOf(person.name)} size={38} />
+                  <div className="t">
+                    <b>{person.name}</b>
+                    <span>Watching</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {coinPacksOpen && (
+        <div className="sheet open" role="dialog" aria-modal="true" aria-label="Get coins">
+          <div className="scrim" onClick={() => setCoinPacksOpen(false)} />
+          <div className="panel">
+            <div className="grab" />
+            <div className="chead">
+              <div>
+                <b>Get coins</b>
+                <div className="lv">Coins let you send gifts to creators.</div>
+              </div>
+              <button type="button" className="ib" onClick={() => setCoinPacksOpen(false)} aria-label="Close coins">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+            <div className="gift-grid">
+              {[70, 350, 700, 1400].map((pack, index) => (
+                <button
+                  key={pack}
+                  type="button"
+                  className="gift"
+                  onClick={() => {
+                    setLiveCoins((value) => value + pack)
+                    setCoinPacksOpen(false)
+                    notify(`+${pack} coins added`)
+                  }}
+                >
+                  {pack} coins � ${[0.99, 4.99, 9.99, 19.99][index]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {giftOpen && (
+        <div className="gift-tray" role="group" aria-label="Send a gift">
+          <div className="gift-tray-head">
+            <b>Send a gift</b>
+            <button type="button" className="coin-chip" onClick={() => setCoinPacksOpen(true)}>
+              <span className="cn" aria-hidden="true" /> {liveCoins} +
+            </button>
+            <button type="button" className="gift-close" onClick={() => setGiftOpen(false)} aria-label="Close gifts">�</button>
+          </div>
+          <div className="gift-grid">
+            {LIVE_GIFTS.map((gift) => {
+              const affordable = liveCoins >= gift.cost
+              return (
+                <button
+                  key={gift.name}
+                  type="button"
+                  className={`gift${affordable ? '' : ' poor'}`}
+                  aria-pressed={false}
+                  onClick={() => sendLiveGift(gift.name)}
+                  title={`${gift.name} � ${gift.cost} coins`}
+                >
+                  <span className="ge">{gift.emoji}</span>
+                  <b>{gift.name}</b>
+                  <span className="gp">{gift.cost}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
       <form className="live-compose" onSubmit={submitLiveChat}>
         <input placeholder="Say something..." aria-label="Send a live comment" value={liveDraft} onChange={(event) => setLiveDraft(event.target.value)} />
-        <button aria-label="Send">➤</button>
-        <button type="button" className="live-heart" onClick={() => setLiveHeart((value) => !value)}>{liveHeart ? '♥' : '♡'}</button>
+        <button type="submit" aria-label="Send comment">➤</button>
+        <button type="button" className="live-gift-btn" onClick={() => setGiftOpen((value) => !value)} aria-label="Send a gift" aria-pressed={giftOpen}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13M5 12v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8M8 8a2.5 2.5 0 1 1 4-2 2.5 2.5 0 1 1 4 2" /></svg>
+        </button>
+        <button type="button" className="live-heart" onClick={() => { popHeart(); setLiveHeart((value) => !value); }} aria-label="Send hearts">
+          {liveHeart ? '♥' : '♡'}
+        </button>
       </form>
     </section>
   </div>
-
-  {/* ---------- Search modal ---------- */ }
-  <Modal open={searchOpen} onClose={() => setSearchOpen(false)} labelledBy="search-title" className="search-modal-card">
-    <ModalHead title="Search" subtitle="Videos, creators, and sounds" onClose={() => setSearchOpen(false)} />
-    <label className="sound-search">⌕<input autoFocus placeholder="Search creators, sounds, and videos" aria-label="Search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} /></label>
-    {q && (
-      <div className="search-results">
-        {searchClipResults.length > 0 && (
-          <>
-            <small className="search-group-label">Videos</small>
-            {searchClipResults.map((clip) => (
-              <button className="sound-row" key={clip.id} onClick={() => jumpToClip(clip.id)}>
-                <span className="sound-cover"><img src={clip.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} /></span>
-                <span><b>{clip.caption.slice(0, 48)}{clip.caption.length > 48 ? '…' : ''}</b><small>{clip.creator} · {clip.audio}</small></span>
-                <span className="sound-preview-button">Watch →</span>
-              </button>
-            ))}
-          </>
-        )}
-        {searchCreatorResults.length > 0 && (
-          <>
-            <small className="search-group-label">Creators</small>
-            {searchCreatorResults.map((creator) => (
-              <button className="sound-row" key={creator.handle} onClick={() => { setSearchOpen(false); navigate('profile') }}>
-                <span className="sound-cover"><Avatar initials={creator.initials} size={34} /></span>
-                <span><b>{creator.name}</b><small>{creator.handle}</small></span>
-                <span className="sound-preview-button">View →</span>
-              </button>
-            ))}
-          </>
-        )}
-        {searchSoundResults.length > 0 && (
-          <>
-            <small className="search-group-label">Sounds</small>
-            {searchSoundResults.map((sound) => (
-              <button className="sound-row" key={sound.id} onClick={() => { setSearchOpen(false); setSoundsOpen(true) }}>
-                <span className="sound-cover">♫</span>
-                <span><b>{sound.title}</b><small>{sound.artist} · {sound.usage}</small></span>
-                <span className="sound-preview-button">Open →</span>
-              </button>
-            ))}
-          </>
-        )}
-        {searchClipResults.length === 0 && searchCreatorResults.length === 0 && searchSoundResults.length === 0 && (
-          <p className="panel-note">No results for “{searchQuery.trim()}”.</p>
-        )}
-      </div>
-    )}
-    {!q && <p className="panel-note" style={{ padding: '8px 4px' }}>Start typing to search videos, creators, and sounds.</p>}
-  </Modal>
 
   {/* ---------- Sounds modal ---------- */ }
   <Modal open={soundsOpen} onClose={() => setSoundsOpen(false)} labelledBy="sounds-title" className="sounds-card">
@@ -4362,8 +5588,8 @@ export default function App() {
   {/* ---------- Blocked users modal ---------- */ }
   <BlockedUsersModal
     blockedUsers={blockedUsers}
-    open={false}
-    onClose={() => {}}
+    open={blockedOpen}
+    onClose={() => setBlockedOpen(false)}
     onUnblock={unblockUser}
   />
 
@@ -4424,11 +5650,18 @@ export default function App() {
     onSwitch={() => setAuthMode((mode) => (mode === 'signin' ? 'signup' : 'signin'))}
   />
 
-  {/* ---------- Mobile nav ---------- */ }
+      {/* ---------- Mobile nav ---------- */ }
       <nav className="mobile-nav" aria-label="Mobile navigation">
         {NAV_MOBILE.map((item) => (
-          <button key={item.id} className={`${screen === item.id ? 'active' : ''}${item.create ? ' create-mobile' : ''}`} onClick={() => (item.create ? startCamera() : navigate(item.id))}>
-            <span className="nav-icon">{item.icon}</span>{item.label}
+          <button
+            key={item.id}
+            className={`${screen === item.id ? 'active' : ''}${item.create ? ' create-mobile' : ''}`}
+            aria-current={screen === item.id ? 'page' : undefined}
+            aria-label={item.create ? 'Create' : undefined}
+            onClick={() => (item.create ? startCamera() : navigate(item.id))}
+          >
+            <span className="nav-icon" aria-hidden="true">{NAV_ICONS[item.id]}</span>
+            {!item.create && item.label}
           </button>
         ))}
       </nav>

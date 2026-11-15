@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#08090c"><title>Visual</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="styles.visual.css">
+</head>
+<body><div class="app" id="app">
+
+<section class="screen show" id="home">
+  <div class="top"><span class="ib"></span>
+    <div class="tabs" id="htabs" role="tablist"><button role="tab" aria-selected="false"><span class="dot"></span>Live</button><button role="tab" aria-selected="false">Following</button><button role="tab" aria-selected="true">For you</button></div>
+    <button class="ib glass" aria-label="Search" data-s="discover"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button></div>
+  <div class="feed" id="feed"></div>
+  <div id="live"><h2>Live now</h2><p class="sub">Join in, say hi, send a heart.</p><div class="grid" id="lgrid"></div></div>
+</section>
+
+<section class="screen" id="discover"><h1>Discover</h1><p class="sub">Different angles on everything.</p>
+  <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input placeholder="Search videos, people, sounds" aria-label="Search"></div>
+  <div class="chips" id="chips"></div>
+  <h3>Trending now</h3><div id="trend"></div>
+  <h3>Picked for you</h3><div class="grid" id="dgrid"></div></section>
+
+<section class="screen" id="inbox"><h1>Inbox</h1><p class="sub">Replies, follows and messages.</p><div class='strow' id='strow'></div>
+  <div class="sup row"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0-9-9v5a1 1 0 0 0 1 1h2v-6H3M21 12v4M12 21h3"/></svg></span><div style="flex:1"><b>Visual Support</b><div style="color:var(--mute);font-size:14px">Ticket T-1042 has a new reply</div></div><button class="btn" data-sup='tickets'>View</button></div>
+  <div class="tabs" id="itabs"><button aria-selected="true">Activity</button><button aria-selected="false">Messages</button></div>
+  <div id="ilist"></div></section>
+
+<section class="screen" id="profile">
+  <div class="row" style="justify-content:space-between;align-items:flex-start"><div><h1>Profile</h1><p class="sub" style="margin-bottom:0">Your page, your point of view.</p></div><div class='row' style='gap:8px'><button class='btn' data-toast='Edit profile' style='padding:10px 14px'>Edit profile</button><button class='ib glass' id='menuBtn' aria-label='Settings'><svg viewBox='0 0 24 24'><path d='M4 7h16M4 12h16M4 17h16'/></svg></button></div></div>
+  <div class="cover"><div class="av">MC</div></div>
+  <div style="margin:10px 0 0 108px;min-height:44px"><b style="font-size:20px">Maya Chen<span class='vb lg' role='img' aria-label='Verified'><svg viewBox='0 0 24 24'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg></span></b><div style="color:var(--mute)">@mayamakes · Portland, OR</div></div>
+  <div class="stats"><div><b>4,820</b><span>followers</span></div><div><b>612</b><span>following</span></div><div><b>82.4K</b><span>likes</span></div></div>
+  <p style="margin:0 0 12px">Collecting small moments, good food, and places with no signal. Here for the things that make an ordinary day feel like yours.</p>
+  <div class="row"><button class="btn o" data-toast="Open Studio">Open Studio</button><button class="btn o" data-sup='home'>Help &amp; support</button></div>
+  <div class='tabs' id='ptabs' style='gap:16px;overflow-x:auto'><button aria-selected='true'>Videos</button><button aria-selected='false'>Reposts</button><button aria-selected='false'>Liked</button><button aria-selected="false">Saved</button><button aria-selected="false">Collections</button></div>
+  <div class="grid" id="pgrid"></div></section>
+
+<section class='screen' id='settings'><div class='row' style='margin-bottom:10px'><button class='ib glass' id='setback' aria-label='Back'><svg viewBox='0 0 24 24'><path d='M15 5l-7 7 7 7'/></svg></button><h1 style='font-size:24px'>Settings</h1></div><h3>Account</h3><button class='srow' data-toast='Account info'>Account info<span class='ch'>›</span></button><div class='srow'>Private account<button class='sw' role='switch' aria-checked='false' aria-label='Private account'></button></div><button class='srow' data-toast='Blocked users'>Blocked users<span class='ch'>›</span></button><h3>Preferences</h3><div class='srow'>Push notifications<button class='sw' role='switch' aria-checked='true' aria-label='Push notifications'></button></div><div class='srow'>Data saver<button class='sw' role='switch' aria-checked='false' aria-label='Data saver'></button></div><div class='srow'>Captions on by default<button class='sw' role='switch' aria-checked='true' aria-label='Captions'></button></div><button class='srow' data-toast='Language'>Language<span class='ch'>English ›</span></button><h3>Support</h3><button class='srow' data-sup='home'>Help &amp; support<span class='ch'>›</span></button><button class='srow' data-sup='report'>Report a problem<span class='ch'>›</span></button><button class='srow' data-toast='Community guidelines'>Community guidelines<span class='ch'>›</span></button><button class='srow' style='color:#ff5a6e;border:0' data-toast='Logged out in this preview'>Log out</button></section>
+<nav id="nav">
+  <button data-s="home" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>Home</button>
+  <button data-s="discover"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>Discover</button>
+  <button class="create" aria-label="Create" data-toast="Camera opens here"><svg viewBox="0 0 24 24" style="stroke-width:2.4"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button data-s="inbox"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>Inbox<span class="nb">3</span></button>
+  <button data-s="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1-4 4-6 8-6s7 2 8 6"/></svg>Profile</button>
+</nav>
+
+<div id='sound'><div class='row' style='margin-bottom:6px'><button class='ib glass' id='sback' aria-label='Back'><svg viewBox='0 0 24 24'><path d='M15 5l-7 7 7 7'/></svg></button><b>Sound</b></div><div id='sbody'></div></div><div id='pop'></div><div id='story'></div><div id='thread'></div><div id='sup'></div>
+<div id="room"><div id="rsc"></div><div class="top"><div class="row glass" style="padding:6px 14px 6px 6px;border-radius:99px"><span class="av" id="rav" style="width:36px;height:36px;font-size:13px"></span><div><b id="rn"></b><div style="font-size:12px"><span class="dot"></span><span id="rv"></span> watching</div></div></div><button class="ib glass" id="rx" aria-label="Leave"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div class="chat" id="rchat"></div></div>
+<div class="sheet" id="sheet"><div class="scrim" id="scrim"></div><div class="panel" role="dialog" aria-label="Comments"><h3 id="ch" style="margin-top:0"></h3><div class="list" id="clist"></div><div class="cin"><input id="cinp" placeholder="Add a comment" aria-label="Add a comment"><button class="btn" id="csend">Post</button></div></div></div>
+<div class="sheet" id="menu"><div class="scrim" id="mscrim"></div><div class="panel" role="dialog" aria-label="Video options"><div style="width:40px;height:4px;border-radius:4px;background:#3a3f4c;margin:0 auto 8px"></div><div id="mlist"></div></div></div>
+<div class="toast" id="toast"></div>
+</div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+let U=0;
+function sc(k){const u=++U;return[
+`<svg class="sc" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="a${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#061233"/><stop offset=".45" stop-color="#1747b8"/><stop offset=".68" stop-color="#e9824f"/></linearGradient><radialGradient id="g${u}"><stop offset="0" stop-color="#ffd9a0"/><stop offset="1" stop-color="#ffd9a0" stop-opacity="0"/></radialGradient></defs><rect width="400" height="800" fill="url(#a${u})"/><path d="M0 560h400v240H0z" fill="#12151c"/><path d="M0 560l60-20 80 14 90-18 90 12 80-8v20H0z" fill="#0b0d12"/><circle cx="70" cy="548" r="40" fill="url(#g${u})"/><circle cx="330" cy="552" r="34" fill="url(#g${u})"/><path d="M0 700l400-60v30L0 770z" fill="#1b1f29"/></svg>`,
+`<svg class="sc" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="a${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8d9fb8"/><stop offset=".5" stop-color="#c9d1da"/></linearGradient><linearGradient id="l${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f8f8a"/><stop offset="1" stop-color="#1c4d52"/></linearGradient></defs><rect width="400" height="800" fill="url(#a${u})"/><path d="M0 420l70-170 50 60 60-110 90 150 60-60 70 130v200H0z" fill="#6c7a8c"/><path d="M0 470l90-90 60 50 80-80 100 100 70-40v200H0z" fill="#3e5560"/><path d="M0 500c60-30 120-10 200-30s140 10 200-10v400H0z" fill="#1f3a30"/><rect y="560" width="400" height="240" fill="url(#l${u})"/><path d="M250 520h110v30H250z" fill="#5a4030"/><path d="M240 520l65-34 65 34z" fill="#3d2a20"/></svg>`,
+`<svg class="sc" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="a${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0f2e"/><stop offset=".5" stop-color="#d24a55"/><stop offset=".8" stop-color="#ffb66b"/></linearGradient></defs><rect width="400" height="800" fill="url(#a${u})"/><circle cx="200" cy="470" r="70" fill="#ffd28a"/><path d="M0 520c80-40 140-10 200-30s130-20 200 10v300H0z" fill="#3a1a2e"/><path d="M0 600c100-40 180 0 260-20s100-10 140 0v220H0z" fill="#241022"/></svg>`,
+`<svg class="sc" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="a${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b3b4a"/><stop offset="1" stop-color="#7be0c3"/></linearGradient></defs><rect width="400" height="800" fill="url(#a${u})"/><circle cx="120" cy="300" r="90" fill="#bff7e6" opacity=".35"/><path d="M0 560c70-60 130-60 200 0s130 60 200 0v240H0z" fill="#0a2a33"/></svg>`][k%4]}
+const I={heart:'<svg viewBox="0 0 24 24"><path d="M12 20.5S3.5 15 3.5 9A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.5 2c0 6-8.5 11.5-8.5 11.5z"/></svg>',chat:'<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>',save:'<svg viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4-6 4z"/></svg>',share:'<svg viewBox="0 0 24 24"><path d="M5 12v7h14v-7M12 15V3M8 7l4-4 4 4"/></svg>',repost:'<svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></svg>',note:'<svg viewBox="0 0 24 24"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>'};
+const VER=['Eddy Hutt','Maya Chen','You'];const vb=n=>VER.includes(n)?`<span class='vb' role='img' aria-label='Verified'><svg viewBox='0 0 24 24'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg></span>`:'';
+const fmt=n=>n>=1000?(n/1000).toFixed(1).replace('.0','')+'K':String(n);
+const av=(n,c,x='')=>`<span class="av" style="background:${c};${x}">${n.split(' ').map(w=>w[0]).join('')}</span>`;
+const FY=[{n:'Eddy Hutt',h:'eddyhutt',t:'18 min ago',cap:'A little more outside time.',tg:'#weekend #bluehour #visual',l:120,c:14,col:'#3b73f2',s:0},{n:'Maya Chen',h:'mayamakes',t:'2 h ago',cap:'Found a cabin with no signal. Staying.',tg:'#portland #nosignal',l:24800,c:612,col:'#1f9d7a',s:1,rp:'Lisa Smooth',rc:'#b5723a'},{n:'Sam Ortiz',h:'samcooks',t:'Yesterday',cap:'Sunday market haul, dinner for six.',tg:'#market #goldenhour',l:12200,c:340,col:'#c2473f',s:2}];
+const FO=[{n:'Lena Park',h:'lenapark',t:'5 min ago',cap:'Morning swim before anyone is awake.',tg:'#swim #quiet',l:3400,c:88,col:'#7a4fd6',s:3,f:1,rp:'Jo Reyes',rc:'#d98a1f'},{n:'Jo Reyes',h:'joreyes',t:'1 h ago',cap:'Ran out of road, kept walking.',tg:'#roadtrip',l:910,c:21,col:'#d98a1f',s:0,f:1},{n:'Priya Nair',h:'priyan',t:'3 h ago',cap:'Slow Sunday, soft light.',tg:'#slowliving',l:5600,c:140,col:'#c2477f',s:2,f:1}];
+const LIVE=[['Eddy Hutt','Blue hour walk, ask me anything',1240,'#3b73f2',0],['Sam Ortiz','Cooking dinner for six',860,'#c2473f',2],['Lena Park','Open water swim recap',412,'#7a4fd6',3],['Maya Chen','Packing for no-signal week',233,'#1f9d7a',1]];
+const feed=$('#feed');let io;
+function build(list){
+ feed.innerHTML='';io&&io.disconnect();
+ io=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){$$('.card').forEach(c=>c.classList.remove('on'));x.target.classList.add('on');x.target.classList.remove('paused')}}),{root:feed,threshold:.6});
+ list.forEach((v,i)=>{
+  const el=document.createElement('section');el.className='card'+(i?'':' on');
+  el.innerHTML=`${sc(v.s)}<div class="shade"></div><div class="pause glass"><svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></div>
+  <div class="rail"><button class="act" data-k="like" aria-pressed="false" aria-label="Like"><span class="ib glass">${I.heart}</span><span class="n">${fmt(v.l)}</span></button><button class="act" data-k="cm" aria-label="Comments"><span class="ib glass">${I.chat}</span>${fmt(v.c)}</button><button class="act" data-k="save" aria-pressed="false" aria-label="Save"><span class="ib glass">${I.save}</span><span>Save</span></button><button class="act" data-k="sh" aria-label="Share"><span class="ib glass">${I.share}</span>Share</button><button class="disc" data-k="snd" aria-label="View sound"></button></div>
+  <div class="info">${v.rp?rpHTML(v.rp,v.rc):''}<div class='who row'><div class='avw'>${av(v.n,v.col,'width:44px;height:44px')}${FOLL.has(v.h)?'':`<button class='fplus' data-h='${v.h}' aria-label='Follow ${v.n}'><svg viewBox='0 0 24 24'><path d='M12 5v14M5 12h14'/></svg></button>`}</div><div><b>${v.n}${vb(v.n)}</b><span>@${v.h} · ${v.t}</span></div></div><p>${v.cap}</p><p class="tags">${v.tg}</p><span class="aud glass">${I.note}Original audio · ${v.n}</span></div><div class="bar"><i></i></div>`;
+  feed.appendChild(el);io.observe(el);
+  let last=0;
+  let lpT,lpAt=0,sx=0,sy=0;el.onpointerdown=e=>{if(e.target.closest('button,.aud'))return;sx=e.clientX;sy=e.clientY;lpT=setTimeout(()=>{lpAt=Date.now();navigator.vibrate&&navigator.vibrate(15);openMenu(v,el)},500)};el.onpointermove=e=>{if(Math.abs(e.clientX-sx)>10||Math.abs(e.clientY-sy)>10)clearTimeout(lpT)};['onpointerup','onpointercancel','onpointerleave'].forEach(k=>el[k]=()=>clearTimeout(lpT));el.oncontextmenu=e=>e.preventDefault();el.onclick=e=>{if(e.target.closest('button,.aud')||Date.now()-lpAt<700)return;const n=Date.now();el.classList.toggle('paused');if(n-last<300)like(el,v,1,e);last=n};
+  el.querySelector('[data-k=like]').onclick=()=>like(el,v,0);
+  el.querySelector('[data-k=save]').onclick=e=>{const b=e.currentTarget,on=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',on);b.lastChild.textContent=on?'Saved':'Save';if(on)toast('Saved to your collection')};
+  const fp=el.querySelector('.fplus');if(fp)fp.onclick=()=>doFollow(v.h);
+  el.querySelector('[data-k=cm]').onclick=()=>openC(v);
+  el.querySelector('[data-k=sh]').onclick=()=>toast('Link copied');el.querySelector('[data-k=snd]').onclick=()=>openSound(v);el.querySelector('.aud').onclick=()=>openSound(v);
+ });feed.scrollTop=0;
+}
+function like(el,v,dbl,e){const b=el.querySelector('[data-k=like]'),was=b.getAttribute('aria-pressed')==='true';
+ if(!(dbl&&was)){const on=dbl?true:!was;b.setAttribute('aria-pressed',on);b.querySelector('.n').textContent=fmt(v.l+(on?1:0))}
+ if(dbl){const r=el.getBoundingClientRect(),d=document.createElement('div');d.className='burst';d.style.left=e.clientX-r.left+'px';d.style.top=e.clientY-r.top+'px';d.innerHTML=I.heart;el.appendChild(d);setTimeout(()=>d.remove(),800)}}
+/* home tabs: Live, Following, For you */
+function homeTab(i){$$('#htabs button').forEach((b,j)=>b.setAttribute('aria-selected',i===j));
+ $('#live').style.display=i===0?'block':'none';feed.style.display=i===0?'none':'block';
+ if(i===1)build(FO);if(i===2)build(FY);}
+$$('#htabs button').forEach((b,i)=>b.onclick=()=>homeTab(i));
+$('#lgrid').innerHTML=LIVE.map((x,i)=>`<button class="th" data-r="${i}" style="text-align:left">${sc(x[4])}<span class="badge">LIVE</span><span class="view glass">${fmt(x[2])}</span><div class="ov"><b>${x[0]}${vb(x[0])}</b><div style="font-weight:500;font-size:12px;color:var(--m2)">${x[1]}</div></div></button>`).join('');
+const chatLines=['Lena: that sky!!','Jo: hi from Austin','Priya: sending hearts','Sam: what song is this?','Alex: first time here, love it'];let ct;
+$$('[data-r]').forEach(b=>b.onclick=()=>{const x=LIVE[b.dataset.r];$('#rsc').innerHTML=sc(x[4]);$('#rav').outerHTML=av(x[0],x[3],'width:36px;height:36px;font-size:13px').replace('<span','<span id="rav"');$('#rn').innerHTML=x[0]+vb(x[0]);$('#rv').textContent=fmt(x[2]);$('#rchat').innerHTML='';$('#room').classList.add('open');let k=0;ct=setInterval(()=>{const d=document.createElement('div');d.textContent=chatLines[k++%5];$('#rchat').appendChild(d);if($('#rchat').children.length>4)$('#rchat').firstChild.remove()},1400)});
+$('#rx').onclick=()=>{$('#room').classList.remove('open');clearInterval(ct)};
+/* discover */
+$('#chips').innerHTML=['For you','Food','Travel','Outdoors','Music','Home'].map((c,i)=>`<button class="chip" aria-pressed="${!i}">${c}</button>`).join('');
+$$('#chips .chip').forEach(b=>b.onclick=()=>$$('#chips .chip').forEach(x=>x.setAttribute('aria-pressed',x===b)));
+$('#trend').innerHTML=[['#bluehour','48K videos'],['#nosignal','21K videos'],['#slowliving','17K videos'],['#marketday','9K videos']].map((t,i)=>`<div class="tr"><div><b>${i+1}. ${t[0]}</b></div><span>${t[1]}</span></div>`).join('');
+const thumbs=(n,off=0,lab=true)=>Array.from({length:n},(_,i)=>`<div class="th">${sc(i+off)}<span class="view glass">▶ ${fmt([24800,12200,8400,3100,56000,990][(i+off)%6])}</span>${lab?`<div class="ov">${['Blue hour, no filter','Cabin, no signal','Market haul','Swim at sunrise'][(i+off)%4]}</div>`:''}</div>`).join('');
+$('#dgrid').innerHTML=thumbs(6,1);
+/* inbox */
+const ACT=[['Eddy Hutt','#3b73f2','liked your video “Cabin, no signal”','2m',0],['Lena Park','#7a4fd6','started following you','1h',1],['Priya Nair','#c2477f','commented: “Saving this for the weekend”','3h',0],['Jo Reyes','#d98a1f','mentioned you in a comment','Yesterday',0]];
+const MSG=[['Sam Ortiz','#c2473f','Can you send that market spot?','10m',1],['Lena Park','#7a4fd6','Duet this weekend?','2h',1],['Jo Reyes','#d98a1f','Thanks!','Mon',0]];
+function inbox(i){const L=i?MSG:ACT;$('#ilist').innerHTML=L.map(x=>`<div class="item">${av(x[0],x[1])}<div class="t"><b>${x[0]}${vb(x[0])}</b><span>${x[2]}</span></div><small>${x[3]}</small>${i?(x[4]?'<span class="un"></span>':''):(x[4]?'<button class="btn" style="padding:7px 14px;font-size:13px;border-radius:12px" data-toast="Followed back">Follow back</button>':'')}</div>`).join('');bind()}
+$$('#itabs button').forEach((b,i)=>b.onclick=()=>{$$('#itabs button').forEach(x=>x.setAttribute('aria-selected',x===b));inbox(i)});inbox(0);
+/* profile */
+function prof(i){$('#pgrid').innerHTML=i===0?thumbs(4,1,false):i===1?repGrid():i===2?thumbs(2,0,false):i===3?thumbs(2,2,false):[['Slow mornings','12 videos'],['No-signal trips','8 videos'],['Dinner for six','5 videos'],['Blue hour','21 videos']].map(c=>`<div class="col">${c[0]}<span>${c[1]}</span></div>`).join('')}
+$$('#ptabs button').forEach((b,i)=>b.onclick=()=>{$$('#ptabs button').forEach(x=>x.setAttribute('aria-selected',x===b));prof(i)});prof(0);
+/* repost, sound, settings */
+const REP=[{s:2,cap:'Sunday market haul'},{s:3,cap:'Swim at sunrise'}];
+function rpHTML(n,c){return `<div class='rp'>${av(n,c,'width:26px;height:26px;font-size:9px;border:1.5px solid #fff')}<span class='rb'>${n==='You'?'You reposted':n.toUpperCase()+' reposted'}</span><span class='rbtn glass'>${I.repost}</span></div>`}
+function repGrid(){return REP.length?REP.map(r=>`<div class='th'>${sc(r.s)}<span class='badge' style='background:var(--accent)'>Reposted</span><div class='ov'>${r.cap}</div></div>`).join(''):`<p class='sub'>Videos you repost show up here.</p>`}
+function doRepost(){if(!mV)return;if(!REP.some(r=>r.cap===mV.cap))REP.unshift({s:mV.s,cap:mV.cap});if(mE&&!mE.querySelector('.rp'))mE.querySelector('.info').insertAdjacentHTML('afterbegin',rpHTML('You','#3b73f2'));if($$('#ptabs button')[1].getAttribute('aria-selected')==='true')prof(1)}
+$('#menuBtn').onclick=()=>{show('settings');$('#nav [data-s=profile]').setAttribute('aria-current','page')};
+$('#setback').onclick=()=>show('profile');
+$$('.sw').forEach(b=>b.onclick=()=>b.setAttribute('aria-checked',b.getAttribute('aria-checked')!=='true'));
+let SV=[];
+function openSound(v){
+ const nm=[v.n,'Lena Park','Jo Reyes','Priya Nair','Sam Ortiz','Maya Chen'],cp=['The original','Same sound, new angle','Tried this at sunrise','Wait for the end','Golden hour edition','No signal, no problem'],vw=[24800,12200,8400,3100,56000,990],cl=['#3b73f2','#7a4fd6','#d98a1f','#c2477f','#c2473f','#1f9d7a'];
+ SV=nm.map((n,i)=>({n,cap:i?cp[i]:v.cap,s:(v.s+i)%4,vw:vw[i],col:cl[i],a:v.n}));
+ $('#sbody').innerHTML=`<div class='row' style='gap:16px;margin:8px 0 16px'><div class='disc' style='width:96px;height:96px;flex:none'></div><div><h2 style='margin:0;font-size:20px'>Original audio</h2><div style='color:var(--mute)'>${v.n} · 0:24</div><div style='margin-top:4px'><b>1,248</b> <span style='color:var(--mute)'>videos</span></div></div></div><div class='row'><button class='btn' style='flex:1' data-toast='Camera opens with this sound'>Use this sound</button><button class='btn o' data-toast='Added to favorites'>Add to favorites</button></div><h3>Videos with this sound</h3><div class='grid'>${SV.map((x,i)=>`<button class='th' data-p='${i}' style='text-align:left'>${sc(x.s)}<span class='view glass'>▶ ${fmt(x.vw)}</span><div class='ov'>${x.n}</div></button>`).join('')}</div>`;
+ $$('#sbody [data-p]').forEach(b=>b.onclick=()=>openPop(SV[b.dataset.p]));bind();$('#sound').classList.add('open');$('#sound').scrollTop=0}
+function openPop(x){$('#pop').innerHTML=`<section class='card on' style='height:100%'>${sc(x.s)}<div class='shade'></div><button class='ib glass' id='px' aria-label='Close' style='position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:16px;z-index:5'><svg viewBox='0 0 24 24'><path d='M6 6l12 12M18 6L6 18'/></svg></button><div class='info' style='right:16px'><div class='who row'>${av(x.n,x.col,'width:44px;height:44px')}<div><b>${x.n}${vb(x.n)}</b><span>${fmt(x.vw)} views</span></div></div><p>${x.cap}</p><span class='aud glass'>${I.note}Original audio · ${x.a}</span></div><div class='bar'><i></i></div></section>`;$('#pop').classList.add('open');$('#px').onclick=()=>$('#pop').classList.remove('open')}
+$('#sback').onclick=()=>$('#sound').classList.remove('open');
+/* stories */
+const ST=[{n:'You',own:1,col:'#3b73f2',items:[]},{n:'Eddy Hutt',col:'#3b73f2',items:[{s:0,txt:'Blue hour again',t:'2h'},{s:3,txt:'Parking lot sunsets',t:'1h'}]},{n:'Lena Park',col:'#7a4fd6',items:[{s:3,txt:'Swim day 14',t:'3h'}]},{n:'Jo Reyes',col:'#d98a1f',items:[{s:1,txt:'Ran out of road',t:'5h'},{s:0,txt:'Gas station dinner',t:'4h'},{s:2,txt:'Found it',t:'4h'}]},{n:'Priya Nair',col:'#c2477f',items:[{s:2,txt:'Slow Sunday',t:'8h'}]},{n:'Sam Ortiz',col:'#c2473f',items:[{s:2,txt:'Market run',t:'9h'}]}];
+let L=[],cu=0,ci=0,stT;
+function renderStories(){$('#strow').innerHTML=ST.map(u=>`<button class='stb' data-n='${u.n}'><span class='ring${u.seen?' seen':''}${u.own&&!u.items.length?' own':''}'>${av(u.own?'You':u.n,u.col,'width:100%;height:100%;font-size:18px')}${u.own?`<span class='plus'>+</span>`:''}</span><span class='sn'>${u.own?'Your story':u.n.split(' ')[0]}</span></button>`).join('');
+ $$('#strow .stb').forEach(b=>b.onclick=()=>{const u=ST.find(x=>x.n===b.dataset.n);if(u.own&&!u.items.length){toast('Camera opens here to add a story');return}openStory(u.n)})}
+function openStory(n){L=ST.filter(u=>u.items.length);cu=L.findIndex(u=>u.n===n);ci=0;$('#story').classList.add('open');showStory()}
+function showStory(){const u=L[cu],it=u.items[ci];clearTimeout(stT);u.seen=true;
+ $('#story').innerHTML=`<section class='card on' style='height:100%'>${sc(it.s)}<div class='shade'></div><div class='segs'>${u.items.map((_,k)=>`<span><i style='${k<ci?'width:100%':k===ci?'animation:prog 4.5s linear forwards':''}'></i></span>`).join('')}</div><div class='shead row'>${av(u.own?'You':u.n,u.col,'width:36px;height:36px;font-size:13px')}<b>${u.own?'Your story':u.n}${vb(u.own?'You':u.n)}</b><small>${it.t}</small><button class='ib glass' id='sx' aria-label='Close' style='margin-left:auto'><svg viewBox='0 0 24 24'><path d='M6 6l12 12M18 6L6 18'/></svg></button></div><button class='zl' aria-label='Previous'></button><button class='zr' aria-label='Next'></button><p class='stxt'>${it.txt}</p><div class='sreply row'><input placeholder='Send a message' aria-label='Reply'><button class='ib glass' id='slk' aria-label='Like'>${I.heart}</button></div></section>`;
+ $('#sx').onclick=closeStory;$('#story .zl').onclick=prevStory;$('#story .zr').onclick=nextStory;$('#slk').onclick=e=>e.currentTarget.classList.toggle('lk');
+ const inp=$('#story input'),bar=()=>$$('#story .segs i')[ci];
+ inp.onfocus=()=>{clearTimeout(stT);bar().style.animationPlayState='paused'};
+ inp.onblur=()=>{bar().style.animationPlayState='running';stT=setTimeout(nextStory,2500)};
+ inp.onkeydown=e=>{if(e.key==='Enter'&&inp.value.trim()){inp.value='';inp.blur();toast('Message sent')}};
+ stT=setTimeout(nextStory,4500)}
+function nextStory(){ci++;if(ci>=L[cu].items.length){cu++;ci=0}if(cu>=L.length)closeStory();else showStory()}
+function prevStory(){if(ci>0)ci--;else if(cu>0){cu--;ci=0}showStory()}
+function closeStory(){clearTimeout(stT);$('#story').classList.remove('open');renderStories()}
+function addStory(){if(!mV)return;ST[0].items.push({s:mV.s,txt:mV.cap,t:'now'});ST[0].seen=false;renderStories()}
+renderStories();
+/* comments */
+const base=[['Lena','That light is unreal','12m'],['Jo','Where is this?','40m'],['Priya','Saving this for the weekend','1h']];
+const row=(n,t,w)=>`<div class="row" style="align-items:flex-start">${av(n,'#2a3350','width:34px;height:34px;font-size:12px')}<div><b style="font-size:13px">${n}</b> <small style="color:var(--mute)">${w}</small><p>${t.replace(/[<>&]/g,'')}</p></div></div>`;
+function openC(v){$('#ch').textContent=fmt(v.c)+' comments';$('#clist').innerHTML=base.map(c=>row(...c)).join('');$('#sheet').classList.add('open')}
+$('#scrim').onclick=()=>$('#sheet').classList.remove('open');
+function post(){const i=$('#cinp');if(!i.value.trim())return;$('#clist').insertAdjacentHTML('afterbegin',row('You',i.value.trim(),'now'));i.value=''}
+$('#csend').onclick=post;$('#cinp').onkeydown=e=>{if(e.key==='Enter')post()};
+/* long-press menu */
+const MI=[['Repost','M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3','Reposted to your profile'],['Add to story','<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>','Added to your story'],['Duet','<rect x="3" y="6" width="8" height="12" rx="2"/><rect x="13" y="6" width="8" height="12" rx="2"/>','Duet camera opens here'],['Download','M12 3v12M7 10l5 5 5-5M5 21h14','Saving to your device'],['Share to other app','M5 12v7h14v-7M12 15V3M8 7l4-4 4 4','Share sheet opens here'],['Copy link','M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1','Link copied'],['Report','M5 21V4M5 4h12l-2 4 2 4H5','Thanks, we will review this video',1]];
+let mV,mE;function openMenu(v,el){mV=v;mE=el;$('#mlist').innerHTML=MI.map((m,i)=>`<button class="mi${m[3]?' bad':''}" data-i="${i}"><svg viewBox="0 0 24 24">${m[1].startsWith('<')?m[1]:`<path d="${m[1]}"/>`}</svg>${m[0]}</button>`).join('');$('#menu').classList.add('open');$$('#mlist .mi').forEach(b=>b.onclick=()=>{const m=MI[b.dataset.i];$('#menu').classList.remove('open');if(m[0]==='Repost')doRepost();if(m[0]==='Add to story')addStory();if(m[0]==='Report')setTimeout(()=>openSupport('report'),250);if(m[0]==='Copy link'){try{navigator.clipboard.writeText(location.href)}catch(e){}}toast(m[2])})}
+$('#mscrim').onclick=()=>$('#menu').classList.remove('open');
+/* comments v2, threads, support */
+const CH=`<svg viewBox='0 0 24 24'><path d='M15 5l-7 7 7 7'/></svg>`;
+const PPL=[['lenapark','Lena Park','#7a4fd6'],['joreyes','Jo Reyes','#d98a1f'],['priyan','Priya Nair','#c2477f'],['samcooks','Sam Ortiz','#c2473f'],['mayamakes','Maya Chen','#1f9d7a'],['eddyhutt','Eddy Hutt','#3b73f2']];
+const STK=['🔥','😂','😍','🙌','✨','💙','🥹','👏','🤯','😎','🌅','🎉'];
+const POOL=[['Jo Reyes','#d98a1f','this made my day'],['Priya Nair','#c2477f','Okay but where is this?? 👀'],['Sam Ortiz','#c2473f','@mayamakes that sound though 🔥'],['Lena Park','#7a4fd6','sending this to everyone I know'],['Alex Kim','#2f8f9d','first time here and I’m staying'],['Jo Reyes','#d98a1f','','🙌'],['Priya Nair','#c2477f','the colors!! @lenapark look'],['Sam Ortiz','#c2473f','','😍']];
+let CV,CM=[],CID=100,RT=null,liveT=[],pi=0,watch=248;
+const handle=n=>(PPL.find(p=>p[1]===n)||[n.toLowerCase().replace(/\s/g,'')])[0];
+const tg=t=>t.replace(/[<>&]/g,'').replace(/@(\w+)/g,`<span class='tag'>@$1</span>`);
+function mkC(v){return [{id:1,n:'Lena Park',col:'#7a4fd6',t:'That light is unreal 😍',w:'12m',l:148,r:[{id:2,n:v.n,col:v.col,t:'@lenapark thank you!! it only lasted ten minutes',w:'9m',l:36,r:[]},{id:3,n:'Jo Reyes',col:'#d98a1f',t:'ten minutes well spent',w:'6m',l:12,r:[]}]},{id:4,n:'Jo Reyes',col:'#d98a1f',t:'Where is this?',w:'40m',l:21,r:[{id:5,n:'Priya Nair',col:'#c2477f',t:'@joreyes looks like Portland to me',w:'31m',l:5,r:[]}]},{id:6,n:'Priya Nair',col:'#c2477f',t:'Saving this for the weekend',w:'1h',l:64,r:[]},{id:7,n:'Sam Ortiz',col:'#c2473f',t:'',st:'🔥',w:'1h',l:9,r:[]}]}
+function find(id){for(const c of CM){if(c.id===id)return[c,c];for(const r of c.r)if(r.id===id)return[r,c]}return[]}
+function cHTML(c,top){const body=c.st?`<div class='cst'>${c.st}</div>`:`<p>${tg(c.t)}</p>`;
+ return `<div class='cm${top?'':' rep'}${c.new?' new':''}'>${av(c.n,c.col,top?'width:36px;height:36px;font-size:12px':'width:28px;height:28px;font-size:10px')}<div class='cb'><div><b>${c.n}${vb(c.n)}</b>${c.n===CV.n?`<span class='crt'>Creator</span>`:''} <small>${c.w}</small></div>${body}<div class='cact'><button data-lk='${c.id}' class='${c.liked?'on':''}'>${I.heart}<span data-lc='${c.id}'>${fmt(c.l)}</span></button><button data-rp='${c.id}'>Reply</button></div>${top&&c.r.length?`<button class='vr' data-vr='${c.id}'>${c.open?'Hide replies':'View '+c.r.length+(c.r.length>1?' replies':' reply')}</button>`:''}${top&&c.open?c.r.map(r=>cHTML(r,0)).join(''):''}</div></div>`}
+function renderC(){const L=$('#cl'),y=L.scrollTop;L.innerHTML=CM.map(c=>cHTML(c,1)).join('');L.scrollTop=y;CM.forEach(c=>{c.new=0;c.r.forEach(r=>r.new=0)})}
+function clearRT(){RT=null;$('#rto').classList.remove('open')}
+function postC(t,st){const c={id:++CID,n:'You',col:'#3b73f2',t,st,w:'now',l:0,r:[],new:1};if(RT){const[p]=find(RT);p.r.push(c);p.open=true}else CM.unshift(c);CV.c++;$('#ct').textContent=fmt(CV.c)+' comments';clearRT();renderC();if(!RT)$('#cl').scrollTop=0;setTimeout(()=>{if(!$('#sheet').classList.contains('open'))return;c.l+=3;const el=$(`[data-lc='${c.id}']`);if(el)el.textContent=fmt(c.l)},2500)}
+function sendC(){const i=$('#cinp'),t=i.value.trim();if(!t)return;i.value='';$('#sug').classList.remove('open');postC(t,'')}
+function liveStop(){liveT.forEach(t=>{clearTimeout(t);clearInterval(t)});liveT=[]}
+function liveStart(){liveStop();const tick=()=>{if(!$('#sheet').classList.contains('open')||!$('#typ'))return liveStop();const nm=POOL[pi++%POOL.length];$('#typ').textContent=nm[0].split(' ')[0]+' is typing…';liveT.push(setTimeout(()=>{if(!$('#typ'))return;$('#typ').textContent='';CM.unshift({id:++CID,n:nm[0],col:nm[1],t:nm[2],st:nm[3]||'',w:'now',l:0,r:[],new:1});CV.c++;$('#ct').textContent=fmt(CV.c)+' comments';renderC()},1500));liveT.push(setTimeout(tick,5200))};
+ liveT.push(setTimeout(tick,2500));
+ liveT.push(setInterval(()=>{watch=Math.max(120,watch+Math.round(Math.random()*8-3));if($('#cw'))$('#cw').textContent=watch},2000));
+ liveT.push(setInterval(()=>{const a=CM[Math.floor(Math.random()*CM.length)];if(!a)return;a.l++;const el=$(`[data-lc='${a.id}']`);if(el)el.textContent=fmt(a.l)},1800))}
+function openC(v){CV=v;CM=v.cm=v.cm||mkC(v);RT=null;liveStop();const P=$('#sheet .panel');P.classList.add('big');
+ P.innerHTML=`<div class='grab'></div><div class='chead'><div><b id='ct'>${fmt(v.c)} comments</b><div class='lv'><span class='dot'></span><span id='cw'>${watch}</span>&nbsp;watching now</div></div><button class='ib' id='cx' aria-label='Close'><svg viewBox='0 0 24 24'><path d='M6 6l12 12M18 6L6 18'/></svg></button></div><div class='clist' id='cl'></div><div class='typ' id='typ'></div><div class='sug' id='sug'></div><div class='stk' id='stk'></div><div class='rto' id='rto'></div><div class='cin'><button class='ib' id='cst' aria-label='Stickers'>😊</button><button class='ib' id='cat' aria-label='Tag someone'>@</button><input id='cinp' placeholder='Add a comment' aria-label='Add a comment'><button class='btn' id='csend'>Post</button></div>`;
+ $('#cx').onclick=()=>{$('#sheet').classList.remove('open');liveStop()};
+ $('#cl').onclick=e=>{const g=a=>e.target.closest(`[data-${a}]`);let b;
+  if(b=g('lk')){const[c]=find(+b.dataset.lk);c.liked=!c.liked;c.l+=c.liked?1:-1;b.classList.toggle('on',!!c.liked);b.querySelector('span').textContent=fmt(c.l)}
+  else if(b=g('rp')){const[c,p]=find(+b.dataset.rp);RT=p.id;$('#cinp').value='@'+handle(c.n)+' ';$('#rto').innerHTML=`<span>Replying to @${handle(c.n)}</span><button id='rcx' aria-label='Cancel reply'>✕</button>`;$('#rto').classList.add('open');$('#rcx').onclick=clearRT;$('#cinp').focus()}
+  else if(b=g('vr')){const[c]=find(+b.dataset.vr);c.open=!c.open;renderC()}};
+ const inp=$('#cinp');
+ inp.oninput=()=>{const m=/@(\w*)$/.exec(inp.value),s=$('#sug');if(!m){s.classList.remove('open');return}const q=m[1].toLowerCase(),F=PPL.filter(p=>p[0].startsWith(q)||p[1].toLowerCase().startsWith(q)).slice(0,4);if(!F.length){s.classList.remove('open');return}s.innerHTML=F.map(p=>`<button data-h='${p[0]}'>${av(p[1],p[2],'width:30px;height:30px;font-size:11px')}<span><b>${p[1]}${vb(p[1])}</b> <small style='color:var(--mute)'>@${p[0]}</small></span></button>`).join('');s.classList.add('open');$$('#sug button').forEach(b=>b.onclick=()=>{inp.value=inp.value.replace(/@(\w*)$/,'@'+b.dataset.h+' ');s.classList.remove('open');inp.focus()})};
+ inp.onkeydown=e=>{if(e.key==='Enter')sendC()};$('#csend').onclick=sendC;
+ $('#cat').onclick=()=>{inp.value+=(inp.value&&!inp.value.endsWith(' ')?' ':'')+'@';inp.focus();inp.oninput()};
+ $('#cst').onclick=()=>$('#stk').classList.toggle('open');
+ $('#stk').innerHTML=STK.map(s=>`<button data-s2='${s}'>${s}</button>`).join('');
+ $$('#stk button').forEach(b=>b.onclick=()=>{$('#stk').classList.remove('open');postC('',b.dataset.s2)});
+ $('#sheet').classList.add('open');renderC();liveStart()}
+/* messages + activity */
+const REPL=['Haha yes!','Send it over 🙌','Love that','Give me five minutes','Perfect, thank you'];
+function openThread(m){m[4]=0;inbox(1);
+ $('#thread').innerHTML=`<div class='row' style='margin-bottom:10px'><button class='ib glass' id='tb' aria-label='Back'>${CH}</button>${av(m[0],m[1],'width:38px;height:38px;font-size:13px')}<div><b>${m[0]}${vb(m[0])}</b><div style='font-size:12px;color:var(--mute)'>Active now</div></div></div><div class='tl' id='tl'><div class='msg me'>Hey! Loved your last video</div><div class='msg them'>${m[2]}</div></div><div class='cin'><input id='tin' placeholder='Message ${m[0].split(' ')[0]}' aria-label='Message'><button class='btn' id='tsd'>Send</button></div>`;
+ const add=(c,t)=>{const l=$('#tl');if(!l)return;l.insertAdjacentHTML('beforeend',`<div class='msg ${c}'>${t.replace(/[<>&]/g,'')}</div>`);l.scrollTop=l.scrollHeight};
+ const send=()=>{const i=$('#tin'),t=i.value.trim();if(!t)return;i.value='';add('me',t);setTimeout(()=>add('them',REPL[Math.floor(Math.random()*5)]),1300)};
+ $('#tsd').onclick=send;$('#tin').onkeydown=e=>{if(e.key==='Enter')send()};$('#tb').onclick=()=>$('#thread').classList.remove('open');$('#thread').classList.add('open');$('#tl').scrollTop=999}
+$('#ilist').onclick=e=>{const it=e.target.closest('.item');if(!it||e.target.closest('button'))return;const k=[...it.parentNode.children].indexOf(it);
+ if($$('#itabs button')[1].getAttribute('aria-selected')==='true')openThread(MSG[k]);else{const x=ACT[k],f=x[4];openPop({n:f?x[0]:'Maya Chen',cap:f?'Their latest video':'Cabin, no signal',s:f?3:1,vw:24800,col:f?x[1]:'#1f9d7a',a:f?x[0]:'Maya Chen'})}};
+/* support */
+const SI={tk:`<svg viewBox='0 0 24 24'><path d='M3 9V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v3a3 3 0 0 0 0 6v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a3 3 0 0 0 0-6z'/></svg>`,rp:`<svg viewBox='0 0 24 24'><path d='M5 21V4M5 4h12l-2 4 2 4H5'/></svg>`,ch:`<svg viewBox='0 0 24 24'><path d='M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z'/></svg>`};
+let SS=[],TK=[{id:'T-1042',t:'Can’t restore my purchase',s:'open',d:'Updated 2 hours ago'},{id:'T-1031',t:'Change the email on my account',s:'wait',d:'Waiting for your reply'},{id:'T-0988',t:'Notifications stopped working',s:'done',d:'Resolved on Nov 2'}],TF='all',RC='Bug',RS='Minor',STo='';
+const LAB={open:'Open',wait:'Needs reply',done:'Resolved'};
+function openSupport(p){SS=[p||'home'];$('#sup').classList.add('open');supR()}
+function supBack(){SS.pop();SS.length?supR():$('#sup').classList.remove('open')}
+function supR(){const p=SS[SS.length-1],T={home:'Get support',tickets:'My tickets',newticket:'New ticket',report:'Report a problem',chat:'Chat with us'}[p],esc=s=>s.replace(/[<>&]/g,'');let b='';
+ if(p==='home'){const n=TK.filter(t=>t.s!=='done').length;b=`<p class='sub'>How can we help today?</p><div class='stat'><span class='dot' style='background:currentColor'></span>Typically reply within 2 hours</div><button class='opt' data-g='tickets'><span class='sic'>${SI.tk}</span><span><b>My tickets</b><span class='s'>Track and reply to requests</span></span>${n?`<span class='nb2'>${n}</span>`:''}</button><button class='opt' data-g='report'><span class='sic'>${SI.rp}</span><span><b>Report a problem</b><span class='s'>Bugs, payments, abuse or content</span></span></button><button class='opt' data-g='chat'><span class='sic'>${SI.ch}</span><span><b>Chat with us</b><span class='s'>Talk to a person, 8am–8pm</span></span></button>`}
+ else if(p==='tickets'){const F=TK.filter(t=>TF==='all'||(TF==='open'?t.s!=='done':t.s==='done'));b=`<div class='tabs'>${['all','open','done'].map(f=>`<button data-f='${f}' aria-selected='${TF===f}'>${{all:'All',open:'Active',done:'Resolved'}[f]}</button>`).join('')}</div>${STo?`<div class='stat'>${STo}</div>`:''}${F.map(t=>`<div class='tk'><div class='row' style='justify-content:space-between'><small>${t.id}</small><span class='pill ${t.s}'>${LAB[t.s]}</span></div><b>${esc(t.t)}</b><small>${t.d}</small></div>`).join('')||`<p class='sub'>Nothing here yet.</p>`}<button class='btn' style='width:100%;margin-top:6px' data-g='newticket'>New ticket</button>`;STo=''}
+ else if(p==='newticket'){b=`<label class='lbl'>Topic<select class='fld'><option>Account</option><option>Billing</option><option>How do I…?</option><option>Something else</option></select></label><label class='lbl'>Subject<input class='fld' id='ts' placeholder='Short summary' maxlength='80'></label><label class='lbl'>Details<textarea class='fld' id='td' placeholder='What happened? What did you expect?'></textarea></label><button class='btn' id='tg' style='width:100%' disabled>Submit ticket</button>`}
+ else if(p==='report'){b=`<label class='lbl'>What kind of problem?</label><div class='chips' id='rc' style='margin-bottom:14px'>${['Bug','Payment','Abuse','Content'].map(c=>`<button class='chip' aria-pressed='${c===RC}'>${c}</button>`).join('')}</div><label class='lbl'>How bad is it?</label><div class='chips' id='rs' style='margin-bottom:14px'>${['Minor','Blocks me','Can’t use app'].map(c=>`<button class='chip' aria-pressed='${c===RS}'>${c}</button>`).join('')}</div><label class='lbl'>What happened?<textarea class='fld' id='rd' placeholder='Steps to reproduce, what you saw, what you expected'></textarea></label><button class='attach' id='ra'>+ Add a screenshot</button><button class='btn' id='rg' style='width:100%' disabled>Send report</button>`}
+ else{b=`<div class='tl' id='sl'><div class='msg them'>Hi! What can we help you with?</div></div><div class='cin'><input id='si' placeholder='Type a message' aria-label='Message'><button class='btn' id='sd'>Send</button></div>`}
+ $('#sup').innerHTML=`<div class='row' style='margin-bottom:12px'><button class='ib glass' id='sb' aria-label='Back'>${CH}</button><h1 style='font-size:24px'>${T}</h1></div><div class='sbody${p==='chat'?' col':''}'>${b}</div>`;
+ $('#sb').onclick=supBack;
+ $$('#sup [data-g]').forEach(x=>x.onclick=()=>{SS.push(x.dataset.g);supR()});
+ $$('#sup [data-f]').forEach(x=>x.onclick=()=>{TF=x.dataset.f;supR()});
+ if(p==='newticket'){const ck=()=>$('#tg').disabled=!($('#ts').value.trim()&&$('#td').value.trim());$('#ts').oninput=ck;$('#td').oninput=ck;$('#tg').onclick=()=>{TK.unshift({id:'T-'+(1043+TK.length),t:$('#ts').value.trim(),s:'open',d:'Just now'});STo='Ticket submitted. We’ll reply here.';SS.pop();supR()}}
+ if(p==='report'){const pk=(id,f)=>$$(`#${id} .chip`).forEach(c=>c.onclick=()=>{f(c.textContent);$$(`#${id} .chip`).forEach(x=>x.setAttribute('aria-pressed',x===c))});pk('rc',v=>RC=v);pk('rs',v=>RS=v);$('#rd').oninput=()=>$('#rg').disabled=!$('#rd').value.trim();$('#ra').onclick=()=>toast('Connect your image picker here');$('#rg').onclick=()=>{TK.unshift({id:'T-'+(1043+TK.length),t:RC+' report: '+$('#rd').value.trim().slice(0,40),s:'open',d:'Just now · '+RS});STo='Report sent. Thank you.';SS=['home','tickets'];supR()}}
+ if(p==='chat'){const add=(c,t)=>{const l=$('#sl');if(!l)return;l.insertAdjacentHTML('beforeend',`<div class='msg ${c}'>${esc(t)}</div>`);l.scrollTop=l.scrollHeight};const send=()=>{const i=$('#si'),t=i.value.trim();if(!t)return;i.value='';add('me',t);setTimeout(()=>add('them','Thanks, we’re looking into it. Can you share your account email?'),1400)};$('#sd').onclick=send;$('#si').onkeydown=e=>{if(e.key==='Enter')send()}}}
+$$('[data-sup]').forEach(b=>b.onclick=()=>openSupport(b.dataset.sup));
+const FOLL=new Set(['lenapark','joreyes','priyan','mayamakes']);
+function doFollow(h){FOLL.add(h);$$(`.fplus[data-h='${h}']`).forEach(b=>{b.classList.add('done');b.innerHTML=`<svg viewBox='0 0 24 24'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg>`;setTimeout(()=>{b.classList.add('gone');setTimeout(()=>b.remove(),260)},900)});toast('Following @'+h)}
+/* live room v2 */
+const GIFTS=[['Rose','🌹',1],['Heart','💙',5],['Coffee','☕',10],['Rocket','🚀',50],['Crown','👑',100],['Galaxy','🌌',299]];
+const PACKS=[[70,'$0.99'],[350,'$4.99'],[700,'$9.99'],[1400,'$19.99']];
+const LVW=[['Lena Park','#7a4fd6'],['Jo Reyes','#d98a1f'],['Priya Nair','#c2477f'],['Sam Ortiz','#c2473f'],['Alex Kim','#2f8f9d'],['Noor Ali','#8a5ad6'],['Theo Brandt','#3b8f4f'],['Mina Cho','#d2557f'],['Eddy Hutt','#3b73f2']];
+const LTX=['this is so good','hiii from Lisbon 👋','how long have you been doing this?','the sky behind you!!','sending love 💙','first time here, following now','what music is this?','omg the colors','can you do a Q&A later?','🔥🔥🔥','good evening everyone','this is my favorite live today'];
+const GIC=`<svg viewBox='0 0 24 24'><rect x='3' y='8' width='18' height='4' rx='1'/><path d='M12 8v13M5 12v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8M8 8a2.5 2.5 0 1 1 4-2 2.5 2.5 0 1 1 4 2'/></svg>`;
+const coin=`<i class='cn'></i>`;
+let COINS=40,GSEL=0,lvT=[],lvN=0,LX=null;
+function lchat(n,c,t,sys){const L=$('#lchat');if(!L)return;L.insertAdjacentHTML('beforeend',`<div class='lm${sys?' sys':''}'>${av(n,c)}<div><b style='color:${c};color:color-mix(in srgb,${c} 55%,#fff)'>${n}${vb(n)}</b> ${t.replace(/[<>&]/g,'')}</div></div>`);while(L.children.length>7)L.firstChild.remove()}
+function lvStop(){lvT.forEach(t=>{clearTimeout(t);clearInterval(t)});lvT=[]}
+function lvStart(){lvStop();const pool=()=>LVW.filter(p=>p[0]!==LX[0]),pick=a=>a[Math.floor(Math.random()*a.length)];
+ const tick=()=>{if(!$('#room.open')||!$('#lchat'))return lvStop();const p=pick(pool());lchat(p[0],p[1],pick(LTX));lvT.push(setTimeout(tick,1100+Math.random()*1400))};
+ lvT.push(setTimeout(tick,700));
+ const gt=()=>{if(!$('#room.open'))return lvStop();const p=pick(pool()),g=GIFTS[pick([0,0,1,1,2,3,4])];playGift(g,p[0],p[1]);lchat(p[0],p[1],'sent a '+g[0]+' '+g[1],1);lvT.push(setTimeout(gt,7000+Math.random()*4000))};
+ lvT.push(setTimeout(gt,4500));
+ lvT.push(setInterval(()=>{lvN=Math.max(50,lvN+Math.round(Math.random()*10-3));const v=$('#vc');if(v)v.textContent=fmt(lvN)},2000))}
+function playGift(g,who,col){const f=$('#gfx'),B=$('#gbans');if(!f)return;const big=g[2]>=50;
+ B.insertAdjacentHTML('beforeend',`<div class='gban'>${av(who,col,'width:30px;height:30px;font-size:11px')}<div><b>${who}${vb(who)}</b><span>sent ${g[0]}</span></div><span class='gem'>${g[1]}</span></div>`);const bn=B.lastChild;setTimeout(()=>bn.remove(),2800);
+ const w=document.createElement('div');w.className='gwrap';w.innerHTML=`${big?`<div class='flash'></div>`:''}<div class='gbig${big?' xl':''}'>${g[1]}</div>`;
+ if(big)for(let k=0;k<16;k++){const a=k/16*6.283,d=110+Math.random()*90;w.insertAdjacentHTML('beforeend',`<i class='spk' style='--x:${Math.cos(a)*d}px;--y:${Math.sin(a)*d}px'></i>`)}
+ f.appendChild(w);setTimeout(()=>w.remove(),3200)}
+function hearts(){const r=$('#room');for(let k=0;k<5;k++)setTimeout(()=>{const h=document.createElement('span');h.className='fh';h.innerHTML=I.heart;h.style.setProperty('--dx',(Math.random()*60-30)+'px');h.style.right=(14+Math.random()*26)+'px';r.appendChild(h);setTimeout(()=>h.remove(),1500)},k*90)}
+function viewers(){const rows=LVW.map((p,k)=>`<div class='item' style='cursor:default'>${av(p[0],p[1])}<div class='t'><b>${p[0]}${vb(p[0])}</b><span>${k<3?'Sent '+(3-k)+' gifts':'Watching'}</span></div></div>`).join('');$('#mlist').innerHTML=`<h3 style='margin:0 0 4px'>${fmt(lvN)} watching</h3><p class='sub' style='margin:0 0 6px'>People in this live</p><div style='max-height:50vh;overflow-y:auto'>${rows}</div>`;$('#menu').classList.add('open')}
+function buyCoins(msg){$('#mlist').innerHTML=`<h3 style='margin:0 0 4px'>Get coins</h3><p class='sub' style='margin:0 0 12px'>${msg||'Coins let you send gifts to creators.'}</p><div class='packs'>${PACKS.map((p,k)=>`<button class='pack' data-p='${k}'><span>${coin} ${p[0]}</span><b>${p[1]}</b></button>`).join('')}</div><p class='fine'>Preview only. No real payment is made.</p>`;$('#menu').classList.add('open');
+ $$('#mlist .pack').forEach(b=>b.onclick=()=>{const p=PACKS[b.dataset.p];COINS+=p[0];$('#menu').classList.remove('open');toast('+'+p[0]+' coins added');if($('#gtray.open'))gtray(true)})}
+function gsync(){const b=$('#gsend'),g=GIFTS[GSEL];if(!b)return;b.textContent=!g?'Send':COINS<g[2]?'Get '+(g[2]-COINS)+' more coins':'Send '+g[0]}
+function gtray(open){const T=$('#gtray'),R=$('#room');if(!T)return;if(!open){T.classList.remove('open');R.classList.remove('gopen');return}
+ T.innerHTML=`<div class='gh'><b>Send a gift</b><button class='coinchip' id='gbuy' aria-label='Get coins'>${coin}<span id='gbal'>${COINS}</span><span class='cp'>+</span></button></div>${COINS<20?`<div class='low'><span>Low balance. Get coins to keep sending gifts.</span><button id='glow'>Get coins</button></div>`:''}<div class='ggrid'>${GIFTS.map((g,k)=>`<button class='gift${k===GSEL?' sel':''}' data-g='${k}'><span class='ge'>${g[1]}</span><b>${g[0]}</b><span class='gp'>${coin} ${g[2]}</span></button>`).join('')}</div><button class='btn' id='gsend' style='width:100%'>Send</button>`;
+ T.classList.add('open');R.classList.add('gopen');gsync();
+ $$('#gtray .gift').forEach(b=>b.onclick=()=>{GSEL=+b.dataset.g;$$('#gtray .gift').forEach(x=>x.classList.toggle('sel',x===b));gsync()});
+ $('#gbuy').onclick=()=>buyCoins('');const gl=$('#glow');if(gl)gl.onclick=()=>buyCoins('');
+ $('#gsend').onclick=()=>{const g=GIFTS[GSEL];if(!g){toast('Pick a gift first');return}if(COINS<g[2]){buyCoins('You need '+(g[2]-COINS)+' more coins to send '+g[0]+'.');return}COINS-=g[2];playGift(g,'You','#3b73f2');lchat('You','#3b73f2','sent a '+g[0]+' '+g[1],1);gtray(true)}}
+function openLive(i){const x=LIVE[i];LX=x;lvStop();lvN=x[2];GSEL=0;
+ const st=[0,1,2].map(k=>av(LVW[k][0],LVW[k][1],'width:26px;height:26px;font-size:10px;border:2px solid #111')).join('');
+ $('#room').innerHTML=`${sc(x[4])}<div class='lshade'></div><div class='ltop'><div class='host glass'>${av(x[0],x[3],'width:36px;height:36px;font-size:13px')}<div><b>${x[0]}${vb(x[0])}</b><div class='lsub'><span class='dot'></span>LIVE</div></div></div><button class='vws glass' id='vws' aria-label='People watching'><span class='stack'>${st}</span><b id='vc'>${fmt(lvN)}</b></button><button class='ib glass' id='rx' aria-label='Leave'><svg viewBox='0 0 24 24'><path d='M6 6l12 12M18 6L6 18'/></svg></button></div><div class='gbans' id='gbans'></div><div id='gfx'></div><div class='lchat' id='lchat'></div><div class='lbar'><input id='lin' placeholder='Say something…' aria-label='Add a comment'><button class='ib lsd' id='lsd' aria-label='Send comment'>➤</button><button class='ib glass' id='lgift' aria-label='Send a gift'>${GIC}</button><button class='ib glass' id='lhrt' aria-label='Send hearts'>${I.heart}</button></div><div class='gtray' id='gtray'></div>`;
+ $('#rx').onclick=()=>{$('#room').classList.remove('open','gopen');lvStop()};
+ $('#vws').onclick=viewers;
+ const inp=$('#lin'),sendL=()=>{const t=inp.value.trim();if(!t)return;inp.value='';lchat('You','#3b73f2',t)};
+ $('#lsd').onclick=sendL;inp.onkeydown=e=>{if(e.key==='Enter')sendL()};
+ $('#lgift').onclick=()=>gtray(true);$('#lhrt').onclick=hearts;
+ $('#room').onclick=e=>{if($('#room').classList.contains('gopen')&&!e.target.closest('#gtray,#lgift'))gtray(false)};
+ $('#room').classList.add('open');
+ lchat('Lena Park','#7a4fd6','good evening everyone');lchat('Jo Reyes','#d98a1f','the sky behind you!!');
+ lvStart()}
+$$('[data-r]').forEach(b=>b.onclick=()=>openLive(+b.dataset.r));
+/* nav + toast */
+function show(s){$$('.screen').forEach(x=>x.classList.toggle('show',x.id===s));$$('#nav [data-s]').forEach(b=>b.toggleAttribute('aria-current',b.dataset.s===s));$$('#nav [data-s]').forEach(b=>{if(b.dataset.s===s)b.setAttribute('aria-current','page')});if(s!=='home')$$('.card').forEach(c=>c.classList.add('paused'));else $$('.card.on').forEach(c=>c.classList.remove('paused'))}
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(tt);tt=setTimeout(()=>t.style.display='none',1800)}
+function bind(){$$('[data-toast]').forEach(b=>b.onclick=()=>toast(b.dataset.toast))}
+$$('[data-s]').forEach(b=>b.onclick=()=>show(b.dataset.s));bind();
+homeTab(2);
+</script></body></html>

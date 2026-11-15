@@ -1,6 +1,8 @@
-# Arc
+# Visual
 
-Arc is a React + TypeScript short-video social app prototype. Without Supabase environment variables, it opens in demo mode. When Supabase is configured, users must sign in or create an account before entering the app.
+Visual is a React + TypeScript short-video app. Without Supabase environment variables it opens in demo mode with sample content; when Supabase is configured, users sign in or create an account first.
+
+The interface is being restyled to match `visual-app.html` (kept at the project root as the design reference). The phone bottom nav and the home feed tabs (Live / Following / For you) are done; the remaining screens follow in the same order as the reference.
 
 ## Run locally
 
@@ -12,31 +14,24 @@ npm run dev
 ## Connect Supabase
 
 1. Create a Supabase project.
-2. In the Supabase SQL Editor, run these migrations in order: `supabase/migrations/20261106000000_initial_schema.sql`, `supabase/migrations/20261106001000_video_storage.sql`, then `supabase/migrations/20261106002000_profile_media.sql`. They create profiles, videos, likes, follows, comments, the `arc-videos` and `arc-profiles` Storage buckets, and their row-level security policies. A profile row is created automatically when a user signs up.
+2. In the Supabase SQL Editor, run the files in `supabase/migrations` in filename order. They create `profiles`, `videos`, likes, comments, follows, the storage buckets, and row-level security.
 3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the project's API settings.
 4. In Supabase Authentication settings, set the site URL to `http://localhost:5173` and enable email/password sign-in.
-5. Restart the Vite server after changing environment variables.
+5. Restart the dev server after changing environment variables.
 
-Only use the project's publishable/anon key in the browser app. Never put a Supabase service-role key in a `VITE_` variable or client-side file.
+Only use the publishable/anon key in the browser app. Never put a service-role key in a `VITE_` variable.
 
-## Record and post videos
+## Folders
 
-Open Create and select **Enable camera & mic**. The browser asks for camera and microphone permission; camera access works on `localhost` or HTTPS. Choose a clip from your device instead, or record up to 60 seconds. Review it, add a caption, then post. Signed-in users upload to the `arc-videos` bucket and save metadata in `public.videos`. The bucket accepts MP4, WebM, and QuickTime video files up to 100 MB. In demo mode, posts are only kept in the current browser session.
+- `index.html` + `src/` — the app. `src/App.tsx` holds every screen and component; `src/styles.css` is the base stylesheet and `src/styles.visual.css` is the restyle layer that is being filled in feature by feature.
+- `supabase/migrations` — the schema the app uses today.
+- `supabase/legacy` — empty; kept as a folder for superseded files.
+- `supabase/proposed` — a newer schema (roles, coins, stories, messages, lives, reposts, saves, tickets, `send_gift`, `claim_coins`) that is **not** applied. It does not match the app's current columns and would need its own migration before use.
+- `visual-prototype.html` — the standalone prototype the new design came from.
+- `ui-preview.html` — an offline preview of an earlier interface.
 
-Live camera capture requires a browser/device with `getUserMedia` and `MediaRecorder` support. Video files use public URLs for playback in this prototype; do not upload private or sensitive footage.
+## Deploy
 
-The feed still includes sample clips, and it does not yet load the full feed from Supabase. Likes, follows, and comments are also still local UI interactions.
+`netlify.toml` builds with `npm run build` and publishes `dist`; `.github/workflows/deploy.yml` does the same for GitHub Pages. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as build-time environment variables.
 
-## Edit your profile
-
-Open **Profile → Edit profile** to update your display name, username, bio, profile photo, and banner. Image uploads accept JPG, PNG, and WebP files up to 5 MB. The profile images are public for profile display; do not upload private images.
-
-## Deploy to Netlify
-
-1. Push this project to a GitHub repository.
-2. In Netlify, choose **Add new site → Import an existing project**, connect GitHub, and select this repository. `netlify.toml` sets the build command to `npm run build`, the publish directory to `dist`, and the SPA fallback.
-3. In the Netlify site's **Environment variables** settings, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Use the publishable/anon key, never the secret key.
-4. Deploy. Netlify will provide one HTTPS URL that automatically serves the phone layout on narrow screens and the desktop layout on wide screens.
-5. In Supabase Authentication URL Configuration, set the Site URL to the deployed HTTPS origin and add that origin to the allowed redirect URLs. Keep `http://localhost:5173` in the redirect list for local development.
-
-The repository is deployment-ready, but a live public deployment still requires connecting it to your Netlify account and GitHub repository.
+In Supabase Authentication URL Configuration, set the Site URL to the deployed HTTPS origin and add that origin to the allowed redirect URLs, keeping `http://localhost:5173` for local development.
